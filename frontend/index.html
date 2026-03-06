@@ -195,6 +195,12 @@
       z-index: 999;
       display: none;
     }
+    #stats, #legend {
+      background: rgba(20, 25, 40, 0.65);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(100, 180, 255, 0.18);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
     .legend-item {
       display: flex;
       align-items: center;
@@ -226,8 +232,14 @@
       <button class="filter-btn" data-filter="GEO" style="border-color: rgba(107,203,255,0.5);">GEO</button>
       <button class="filter-btn" data-filter="HEO" style="border-color: rgba(192,132,252,0.5);">HEO</button>
       <button class="filter-btn" data-filter="rocketlab" style="border-color: rgba(0,220,130,0.5);">Rocket Lab</button>
+
+      <button id="groundPOVBtn" class="filter-btn" 
+      style="border-color: rgba(100,255,200,0.5); background: rgba(20,40,30,0.6);">
+      Ground POV
+      </button>
+      <button id="beamToggle" style="border: 1px solid rgba(255,255,100,0.5); background: rgba(30,40,60,0.6); color: #a0b8d0; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; display:none;">Show Beams</button>
     </div>
-  </div>
+  </div> 
 
   <div id="stats"></div>
 
@@ -250,7 +262,8 @@
   satellite.js must load first because it uses it's functions.
   
   -->
-   <script src="js/satellites.js"></script>
+  <script src="js/satellites.js"></script>
+  <script src="js/beams.js"></script>
   <script src="js/app.js"></script>
 
 </body>

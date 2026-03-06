@@ -27,6 +27,22 @@ const viewer = new Cesium.Viewer('cesiumContainer', {
     infoBox: false              // Build custom later for personalization
 });
 
+// Black out the globe base color
+viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050505');
+
+// Enable dynamic lighting (makes the dark side of the earth actually dark)
+viewer.scene.globe.enableLighting = true;
+
+// Ensure glowing dots don't render through the earth
+viewer.scene.globe.depthTestAgainstTerrain = true;
+
+// Holographic atmosphere styling (Cyan/Blue shift)
+viewer.scene.skyAtmosphere.hueShift = -0.4; // Shifts toward blue/cyan
+viewer.scene.skyAtmosphere.brightnessShift = 0.2;
+viewer.scene.skyAtmosphere.saturationShift = 0.5;
+
+// Optional: Hide the default stars/skybox if you want a pure black background
+// viewer.scene.skyBox.show = false;
 // ****************** switch to office location ************
 // *****************************************************
 // ******************************************************
@@ -38,6 +54,14 @@ viewer.camera.flyTo({
     ),
     duration: 0
 });
+
+// might need this so we're not missing improper names
+function isRocketLab(name) {
+  const lower = name.toLowerCase();
+  return lower.includes('rocket') || lower.includes('electron') || 
+         lower.includes('photon') || lower.includes('capella') || 
+         lower.includes('hawk') || lower.includes('strix') || lower.includes('scot');
+}
 
 // New Visual Textures (temp hopefully until I can integrate realism)
 // temp glowing dot texture
@@ -170,7 +194,7 @@ async function loadSatellites() {
                     1000000, 1.5,    // close: 1.5x size
                     100000000, 0.6   // far: 0.6x size
                 ),
-                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                disableDepthTestDistance: 0,
                 id: sat  // attach satellite data for click detection
             });
             // Store the pair so we can update positions later (animation)
@@ -219,7 +243,8 @@ function startAnimation() {
 
             // update stored position
             entry.sat.position = newPos;
-
+            //add a pulsing billboard
+            entry.billboard.scale = 1.0 + (Math.sin(Date.now() / 2800) * 0.2); // dangerous line
             // Now move billboard to new location
             entry.billboard.position = Cesium.Cartesian3.fromDegrees(
                 newPos.longitude,
@@ -272,7 +297,18 @@ function applyFilter(filter) {
         }
     });
 
+    // Show coverage beams for Rocket Lab filter, clear for everything else
     updateStats(visibleCount, counts);
+    clearBeams();
+    // Show beam toggle button for group filters (not "all")
+    const beamBtn = document.getElementById('beamToggle');
+    if (filter !== 'all') {
+      beamBtn.style.display = 'inline-block';
+      beamBtn.textContent = 'Show Beams';
+      beamBtn.classList.remove('active');
+    } else {
+      beamBtn.style.display = 'none';
+    }
 }
 
 function updateStats(total, counts) {
@@ -297,23 +333,23 @@ function updateStats(total, counts) {
 // We fill the info panel with Satellites details
 
 function setupClickHandler() {
-const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
-handler.setInputAction(function (click) {
+    handler.setInputAction(function (click) {
     // Cast a ray from the click position
     const picked = viewer.scene.pick(click.position);
 
-    if (Cesium.defined(picked) && picked.id) {
+    if (Cesium.defined(picked) && picked.id && picked.id.satrec) {
         // we picked a satellite so we look it up
         const sat = picked.id;
-        showInfoPanel(sat);
-        flyToSatellite(sat);
+            clearBeams();     // clear group beams
+            showInfoPanel(sat);
+            flyToSatellite(sat);
+            addBeam(sat); // comment if getting annoying on clicks
     } else {
-        // clicked empty space
-        // shouldn't be a porblem once i swap dots for better visual
-        document.getElementById('infoPanel').style.display = 'none';
+      document.getElementById('infoPanel').style.display = 'none';
     }
-}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 }
 
 // Info Panel
@@ -442,6 +478,114 @@ function setupSearch() {
         }
     });
 }
-    
-// Run it
+// Beam toggle button
+// Only visible when a group filter (like Rocket Lab) is active.
+// Clicking it toggles coverage beams on/off for all visible satellites.
+document.getElementById('beamToggle').addEventListener('click', function () {
+  const btn = document.getElementById('beamToggle');
+
+  if (activeBeams.length > 0) {
+    // Beams are on — turn them off
+    clearBeams();
+    btn.textContent = 'Show Beams';
+    btn.classList.remove('active');
+  } else {
+    // Beams are off — turn them on
+    showBeamsForGroup(satBillboards);
+    btn.textContent = 'Hide Beams';
+    btn.classList.add('active');
+  }
+});
+
+// Ground POV
+let isGroundPOV = false;
+let userLocation = { lon: -123.50, lat: 48.45 }; // Default fallback my city
+const orbitalViewHeight = 20000000;
+
+// Fetch user location on site load
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            // Reassign the whole object to ensure it stays intact
+            userLocation = {
+                lon: position.coords.longitude,
+                lat: position.coords.latitude
+            };
+            console.log("Locked onto real-time coordinates:", userLocation);
+        },
+        (error) => console.warn("Location access denied. Using fallback.")
+    );
+}
+
+document.getElementById('groundPOVBtn').addEventListener('click', function () {
+    isGroundPOV = !isGroundPOV;
+    const btn = this;
+
+    if (isGroundPOV) {
+        // Fly down to 50 meters
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(
+                userLocation.lon,
+                userLocation.lat,
+                50 
+            ),
+            orientation: { 
+                heading: 0,   
+                pitch: Cesium.Math.toRadians(-15),
+                roll: 0.0
+            },
+            duration: 3.0,
+            complete: function() {
+                // Tilt camera up into the sky
+                viewer.camera.setView({
+                    orientation: {
+                        heading: 0,
+                        pitch: Cesium.Math.toRadians(85), // Looking up
+                        roll: 0.0
+                    }
+                });
+                
+                // Trigger beams
+                if (typeof showBeamsForGroup === 'function') {
+                    showBeamsForGroup();
+                }
+            }
+        });
+        
+        btn.textContent = 'Orbital View';
+        btn.style.background = 'rgba(100,255,200,0.35)';
+        btn.style.borderColor = 'rgba(100,255,200,0.8)';
+        
+    } else {
+        // Return to space
+        viewer.camera.flyTo({ 
+            destination: Cesium.Cartesian3.fromDegrees(
+                userLocation.lon,
+                userLocation.lat,
+                orbitalViewHeight
+            ),
+            orientation: {
+                heading: 0,
+                pitch: Cesium.Math.toRadians(-90), // Look straight down
+                roll: 0
+            },
+            duration: 2.5,
+            complete: function() {
+                if (typeof clearBeams === 'function') {
+                    clearBeams();
+                }
+                const beamToggle = document.getElementById('beamToggle');
+                if (beamToggle) {
+                    beamToggle.classList.remove('active');
+                    beamToggle.textContent = 'Show Beams';
+                }
+            }
+        });
+        
+        btn.textContent = 'Ground POV';
+        btn.style.background = 'rgba(20,40,30,0.6)';
+        btn.style.borderColor = 'rgba(100,255,200,0.5)';
+    }
+});
+
 loadSatellites();
