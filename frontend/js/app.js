@@ -65,6 +65,7 @@ function isRocketLab(name) {
 
 // New Visual Textures (temp hopefully until I can integrate realism)
 // temp glowing dot texture
+/*
 function createGlowTexture(color, size) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -87,22 +88,33 @@ function createGlowTexture(color, size) {
 
     return canvas;
 }
+*/
+//nanobananna svg image of satellites dots are commented out above
+// Generates a sharp, tactical SVG marker as a Data URI
+function createTacticalMarker(color) {
+    const svg = `
+    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 2 8 L 2 2 L 8 2 M 24 2 L 30 2 L 30 8 M 30 24 L 30 30 L 24 30 M 8 30 L 2 30 L 2 24" 
+              fill="none" stroke="${color}" stroke-width="1.5" opacity="0.7"/>
+        <polygon points="16,6 26,16 16,26 6,16" 
+                 fill="${color}" fill-opacity="0.3" stroke="${color}" stroke-width="1.5"/>
+        <circle cx="16" cy="16" r="2" fill="#ffffff"/>
+    </svg>`;
+    
+    // Convert the SVG string to a format Cesium's Billboard can render
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+}
 
 // Pre-set glow features
 const glowTextures = {
-  LEO: createGlowTexture('#ff6b6b', 64),
-  MEO: createGlowTexture('#ffd93d', 64),
-  GEO: createGlowTexture('#6bcbff', 64),
-  HEO: createGlowTexture('#c084fc', 64)
+  LEO: createTacticalMarker('#ff3333'), // High-alert Red
+  MEO: createTacticalMarker('#ffcc00'), // Warning Yellow
+  GEO: createTacticalMarker('#00e6e6'), // Tactical Cyan
+  HEO: createTacticalMarker('#b366ff')  // Deep Purple
 };
 
 // Billboard sizes per orbit (further out are bigger)
-const DOT_SIZES = {
-  LEO: 10,
-  MEO: 14,
-  GEO: 18,
-  HEO: 16
-};
+const DOT_SIZES = { LEO: 20, MEO: 24, GEO: 28, HEO: 26 };
 
 
 // Billboard collection 
@@ -498,8 +510,8 @@ document.getElementById('beamToggle').addEventListener('click', function () {
 });
 
 // Ground POV
-let isGroundPOV = false;
-let userLocation = { lon: -123.50, lat: 48.45 }; // Default fallback my city
+window.isGroundPOV = false;
+window.userLocation = { lon: -123.50, lat: 48.45 }; // Default fallback my city
 const orbitalViewHeight = 20000000;
 
 // Fetch user location on site load
@@ -507,11 +519,11 @@ if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
         (position) => {
             // Reassign the whole object to ensure it stays intact
-            userLocation = {
+            window.userLocation = {
                 lon: position.coords.longitude,
                 lat: position.coords.latitude
             };
-            console.log("Locked onto real-time coordinates:", userLocation);
+            console.log("Locked onto real-time coordinates:", window.userLocation);
         },
         (error) => console.warn("Location access denied. Using fallback.")
     );
@@ -525,8 +537,8 @@ document.getElementById('groundPOVBtn').addEventListener('click', function () {
         // Fly down to 50 meters
         viewer.camera.flyTo({
             destination: Cesium.Cartesian3.fromDegrees(
-                userLocation.lon,
-                userLocation.lat,
+                window.userLocation.lon,
+                window.userLocation.lat,
                 50 
             ),
             orientation: { 
@@ -560,8 +572,8 @@ document.getElementById('groundPOVBtn').addEventListener('click', function () {
         // Return to space
         viewer.camera.flyTo({ 
             destination: Cesium.Cartesian3.fromDegrees(
-                userLocation.lon,
-                userLocation.lat,
+                window.userLocation.lon,
+                window.userLocation.lat,
                 orbitalViewHeight
             ),
             orientation: {

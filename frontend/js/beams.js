@@ -46,79 +46,118 @@ function getCoverageRadius(altitudeKm) {
     return Math.min(radius, 3000000); 
 }
 
-function addBeam(sat) {
-  const pos = sat.position;
-  if (!pos) return;
+// Haversine formula allows us to calculate sperical distance so we can 
+// only show beams for relevant satellites 
+function getGroundDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // in meters
+    const dLat = Cesium.Math.toRadians(lat2 - lat1); // distance between will always be +
+    const dLon = Cesium.Math.toRadians(lon2 - lon1);
 
-  const altMeters = pos.altitude * 1000;
-  const radius = getCoverageRadius(pos.altitude);
-  const orbitType = sat.orbitType;
+    // square of half the chord length between the points
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(Cesium.Math.toRadians(lat1)) * Math.cos(Cesium.Math.toRadians(lat2)) *
+        Math.sin(dLon/2) * Math.sin(dLon/2);
 
-  // The holographic cone and pulsing/glowing rim
-  const cone = viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(pos.longitude, pos.latitude, altMeters / 2),
-    cylinder: {
-      topRadius: 8000,
-      bottomRadius: radius,
-      length: altMeters,
-      material: new Cesium.ColorMaterialProperty(
-        new Cesium.CallbackProperty(() => {
-          const alpha = 0.09 + Math.sin(Date.now() / 280) * 0.04; // pulsing shimmer
-          return BEAM_COLORS[orbitType].withAlpha(alpha);
-        }, false)
-      ),
-      outline: true,
-      outlineColor: BEAM_OUTLINE,
-      outlineWidth: 2,
-      numberOfVerticalLines: 16,
-      slices: 32
-    },
-    allowPicking: false   // This is needed to allow clicks to hit satellites
-  });
-
-  // Holographic Ground Footprint (Elipse)
-  // CALC for Coverage Radius (need to know how much ground this satellite can see and it's moving)
-
-  /*
-  Geometric Horizon Formula:
-    radius = sqrt(h * (2R + h))
-    where h = altitude, R = Earths Radius
-
-    and apply cap for GEO beam Depending on how messy it appears***********
-  */
-  const footprint = viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(pos.longitude, pos.latitude),
-    ellipse: {
-      semiMajorAxis: radius,
-      semiMinorAxis: radius,
-      material: new Cesium.ColorMaterialProperty(
-        new Cesium.CallbackProperty(() => {
-          const alpha = 0.12 + Math.sin(Date.now() / 400) * 0.03;
-          return BEAM_COLORS[orbitType].withAlpha(alpha);
-        }, false)
-      ),
-      outline: true,
-      outlineColor: BEAM_OUTLINE,
-      outlineWidth: 1.5,
-      height: 1000,
-      allowPicking: false
-    }
-  });
-
-  activeBeams.push(cone, footprint);
+    // The angular distance in radians
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // Distance in meters
 }
+
+function addBeam(sat) {
+    const pos = sat.position;
+    if (!pos) return;
+
+    const altMeters = pos.altitude * 1000;
+    const radius = getCoverageRadius(pos.altitude);
+    const orbitType = sat.orbitType;
+
+    // Create a high-tech grid material
+    const wireframeMaterial = new Cesium.GridMaterialProperty({
+        color: BEAM_COLORS[orbitType].withAlpha(0.6),
+        cellAlpha: 0.05, // Almost transparent between the grid lines
+        lineCount: new Cesium.Cartesian2(16, 16),
+        lineThickness: new Cesium.Cartesian2(1.5, 1.5),
+        lineOffset: new Cesium.Cartesian2(0, 0)
+    });
+
+    // The tactical scanning cone
+    const cone = viewer.entities.add({
+        // We can use Cesiums CallBackProperty here to update beam
+        position: new Cesium.CallbackProperty(() => {
+            const currentPos = sat.position;
+            if(!currentPos) return Cesium.Cartesian3.ZERO;
+            return Cesium.Cartesian3.fromDegrees(
+                currentPos.longitude,
+                currentPos.latitude,
+                (currentPos.altitude * 1000) / 2
+            );
+        }, false),
+        cylinder: {
+            topRadius: 8000, // Small opening at the satellite
+            bottomRadius: radius,
+            length: altMeters,
+            material: wireframeMaterial,
+            outline: true,
+            outlineColor: BEAM_COLORS[orbitType].withAlpha(0.8),
+            outlineWidth: 2,
+            numberOfVerticalLines: 12, // Gives it geometric structure
+            slices: 24
+        },
+        allowPicking: false
+    });
+
+    // Ground target lock footprint
+    const footprint = viewer.entities.add({
+        // Dynamic position tracker for the ground footprint
+        position: new Cesium.CallbackProperty(() => {
+            const currentPos = sat.position;
+            if (!currentPos) return Cesium.Cartesian3.ZERO;
+            return Cesium.Cartesian3.fromDegrees(currentPos.longitude, currentPos.latitude);
+        }, false),
+        ellipse: {
+            semiMajorAxis: radius,
+            semiMinorAxis: radius,
+            material: wireframeMaterial,
+            outline: true,
+            outlineColor: Cesium.Color.WHITE.withAlpha(0.5),
+            outlineWidth: 2,
+            height: 100, // Slightly off the ground to prevent clipping
+            allowPicking: false
+        }
+    });
+
+    activeBeams.push(cone, footprint);
+}
+
 
 function showBeamsForGroup() {
   clearBeams();
   let count = 0;
+
+  // Grab user location from the window object we setup in app.js
+  const userLat = window.userLocation.lat;
+  const userLon = window.userLocation.lon;
+
   satBillboards.forEach(entry => {
-    if (entry.billboard.show && count < 80) {   // safety cap
-      addBeam(entry.sat);
-      count++;
+    if (!entry.billboard.show) return;
+
+    const pos = entry.sat.position;
+            if (!pos) return;
+
+            // How wide is this specific satellite's footprint?
+            const coverageRadius = getCoverageRadius(pos.altitude);
+            
+            // How far away is the satellite's center from our location?
+            const distanceToUser = getGroundDistance(userLat, userLon, pos.latitude, pos.longitude);
+
+            // If the distance is less than the radius, it is scanning us!
+            if (distanceToUser < coverageRadius) {
+                addBeam(entry.sat);
+                count++;
+            }
+        });
+        console.log(`Tactical filtering complete. ${count} satellites currently overhead.`);
     }
-  });
-  console.log(`Holographic beams active: ${count}`);
-}
 
 function clearBeams() {
   activeBeams.forEach(entity => viewer.entities.remove(entity));
