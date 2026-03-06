@@ -64,29 +64,49 @@ SGP4 does the bulk of the work here
 satreec and time -> calculates 3D position -> convert to long, lat, and alt -> place dots and add alt layers.
 */
 function getPosition(satrec, time){
-// run SGP4
-const result = satellite.propagate(satrec, time);
+    // run SGP4
+    const result = satellite.propagate(satrec, time);
 
-// if unsuccessfull
-if (!result.position) return null;
+    // if unsuccessfull
+    if (!result.position) return null;
 
-// GMST is the angle of earth's rotation at our time t 
-const gmst = satellite.gstime(time);
+    // GMST is the angle of earth's rotation at our time t 
+    const gmst = satellite.gstime(time);
 
-// space coordiantes are not the same as planet coordinates (convert "TEME" to long/lat)
-const geo = satellite.eciToGeodetic(result.position, gmst);
+    // space coordiantes are not the same as planet coordinates (convert "TEME" to long/lat)
+    const geo = satellite.eciToGeodetic(result.position, gmst);
 
-return{
-    latitude: satellite.degreesLat(geo.latitude),
-    longitude: satellite.degreesLong(geo.longitude),
-    altitude: geo.height,
-    velocity: Math.sqrt(
-        result.velocity.x **2 +
-        result.velocity.y ** 2 +
-        result.velocity.z ** 2
-        )
-    };
+    return{
+        latitude: satellite.degreesLat(geo.latitude),
+        longitude: satellite.degreesLong(geo.longitude),
+        altitude: geo.height,
+        velocity: Math.sqrt(
+            result.velocity.x **2 +
+            result.velocity.y ** 2 +
+            result.velocity.z ** 2
+            )
+        };
 }
 
+// Rocket Lab Identification
+// Electron Rocket tracked by NORAD list contains everything by NORAD
 
+// CelesTrak names do not come out perfect **********************************************
+// *****************************************************
+const ROCKET_LAB_TERMS = [
+  'electron',        // Rocket body / debris
+  'photon',          // Rocket Lab's satellite bus
+  'capella',         // Capella Space (RL customer)
+  'sequoia',         // Capella constellation
+  'kineis',          // Kineis IoT satellites (launched on Electron)
+  'hawk',            // HawkEye 360 (frequent RL customer)
+  'strix',           // Synspective SAR satellites
+  'globalstar',      // Globalstar (some on Electron)
+  'owl',             // Some cubesats launched by RL
+  'bro',             // Unseenlabs BRO satellites
+];
 
+function isRocketLab(satName) {
+  const lower = satName.toLowerCase();
+  return ROCKET_LAB_TERMS.some(term => lower.includes(term));
+}
