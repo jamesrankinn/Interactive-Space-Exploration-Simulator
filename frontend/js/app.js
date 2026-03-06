@@ -11,20 +11,78 @@
 
 Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmMjFlODNmMi04Njc5LTRkYWYtYjY2MS01ZTY5NWI4ODZiNDYiLCJpZCI6Mzk4NDEwLCJpYXQiOjE3NzI2OTA4MTV9.u6hd3Ctfcx0zerpizKuLsALR2m7q0B1lXYNYlyUc5KI';
 
-// ************************************************************
+// ==========================================
+// --- GLOBALS & TACTICAL LOCATION ---
+// ==========================================
+window.userLocation = { lon: -123.50, lat: 48.45 }; // Default fallback (Langford)
+const orbitalViewHeight = 20000000;
+
+// Fetch user location quietly in the background
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            window.userLocation = { lon: position.coords.longitude, lat: position.coords.latitude };
+        },
+        (error) => console.warn("Location access denied. Using fallback.")
+    );
+}
+
 const MAX_SATS = 5000; // lower if doesn't run well on macbook
 
 // Create the Viewer
+// 1. Create the base Viewer (NO terrain inside here!)
 const viewer = new Cesium.Viewer('cesiumContainer', {
-    baseLayerPicker: false,     // Don't let user switch map styles
-    geocoder: false,            // No search bar
-    homeButton: false,          // No "reset view" button
-    sceneModePicker: false,     // No 2D/3D toggle
-    navigationHelpButton: false,// No help button
-    timeline: false,            // No timeline bar at bottom
-    animation: false,           // No clock widget
-    fullscreenButton: false,    // No fullscreen button
-    infoBox: false              // Build custom later for personalization
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: false,
+    sceneModePicker: false,
+    navigationHelpButton: false,
+    timeline: false,
+    animation: false,
+    fullscreenButton: false,
+    infoBox: false
+});
+
+// 2. Set Globe tactical styling
+viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050505');
+viewer.scene.globe.enableLighting = true;
+viewer.scene.globe.depthTestAgainstTerrain = true;
+viewer.scene.skyAtmosphere.hueShift = -0.4;
+viewer.scene.skyAtmosphere.brightnessShift = 0.2;
+viewer.scene.skyAtmosphere.saturationShift = 0.5;
+
+// 3. ASYNC TERRAIN (This brings the Earth back!)
+Cesium.createWorldTerrainAsync({
+    requestWaterMask: true, 
+    requestVertexNormals: true 
+}).then(function(terrainProvider) {
+    viewer.terrainProvider = terrainProvider;
+    console.log("3D Terrain online.");
+}).catch(function(error) {
+    console.warn("Terrain failed to load:", error);
+});
+
+// 4. ASYNC BUILDINGS (Ensure you deleted the old createOsmBuildings line!)
+Cesium.createOsmBuildingsAsync().then(function(buildings) {
+    viewer.scene.primitives.add(buildings);
+    console.log("3D Cityscapes online.");
+}).catch(function(error) {
+    console.warn("Failed to load 3D cities:", error);
+});
+
+// Black out the globe base color
+viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050505');
+viewer.scene.globe.enableLighting = true;
+viewer.scene.globe.depthTestAgainstTerrain = true;
+viewer.scene.skyAtmosphere.hueShift = -0.4;
+viewer.scene.skyAtmosphere.brightnessShift = 0.2;
+viewer.scene.skyAtmosphere.saturationShift = 0.5;
+
+// FIX: Swapped to createOsmBuildingsAsync and wrapped in a Promise
+Cesium.createOsmBuildingsAsync().then(function(buildings) {
+    viewer.scene.primitives.add(buildings);
+}).catch(function(error) {
+    console.warn("Failed to load 3D cities:", error);
 });
 
 // Black out the globe base color
@@ -32,6 +90,9 @@ viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050505');
 
 // Enable dynamic lighting (makes the dark side of the earth actually dark)
 viewer.scene.globe.enableLighting = true;
+
+// 3D buildings
+viewer.scene.primitives.add(Cesium.createOsmBuildings());
 
 // Ensure glowing dots don't render through the earth
 viewer.scene.globe.depthTestAgainstTerrain = true;
@@ -41,16 +102,14 @@ viewer.scene.skyAtmosphere.hueShift = -0.4; // Shifts toward blue/cyan
 viewer.scene.skyAtmosphere.brightnessShift = 0.2;
 viewer.scene.skyAtmosphere.saturationShift = 0.5;
 
-// Optional: Hide the default stars/skybox if you want a pure black background
+// uncomment to get rid of the stars
 // viewer.scene.skyBox.show = false;
-// ****************** switch to office location ************
-// *****************************************************
-// ******************************************************
+
 viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(
-    -123.50,   // longitude: Langford, BC
-    48.45,     // latitude: Langford, BC
-    20000000   // altitude: 20,000 km up (in meters)
+        window.userLocation.lon,
+        window.userLocation.lat,
+        orbitalViewHeight // 50 meters above the ground
     ),
     duration: 0
 });
@@ -104,6 +163,17 @@ function createTacticalMarker(color) {
     // Convert the SVG string to a format Cesium's Billboard can render
     return 'data:image/svg+xml;base64,' + btoa(svg);
 }
+
+function createAircraftMarker(color) {
+    const svg = `
+        <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="12,2 22,20 12,16 2,20" 
+                    fill="${color}" fill-opacity="0.6" stroke="${color}" stroke-width="1.5"/>
+            <circle cx="12" cy="12" r="1.5" fill="#ffffff"/>
+        </svg>`;
+        return 'data:image/svg+xml;base64,' + btoa(svg);
+}
+const aircraftTexture = createAircraftMarker('#ff9900'); // High-visibility radar orange
 
 // Pre-set glow features
 const glowTextures = {
@@ -196,15 +266,13 @@ async function loadSatellites() {
                 height: DOT_SIZES[orbitType],
                 // Translucency settings for the glow effect
                 translucencyByDistance: new Cesium.NearFarScalar(
-                1000000,    // at 1,000 km: full opacity
-                1.0,
-                300000000,  // at 300,000 km: reduced opacity
-                0.4
+                    2000000, 1.0, 
+                    12000000, 0.0 // Fades to 0 opacity at 12,000 km
                 ),
                 // Scale dots when camera is far away so they can stay visible
                 scaleByDistance: new Cesium.NearFarScalar(
-                    1000000, 1.5,    // close: 1.5x size
-                    100000000, 0.6   // far: 0.6x size
+                    1000000, 1.0, 
+                    12000000, 0.1
                 ),
                 disableDepthTestDistance: 0,
                 id: sat  // attach satellite data for click detection
@@ -233,10 +301,14 @@ async function loadSatellites() {
         setupFilters();
 
         startAnimation();
-        // Fetch ML anomalies from backend
-        fetchAnomalies();
+
         // Trigger the ML pipeline fetch after baseline render is complete
         await fetchAnomalies();
+
+        // Initialize local airspace radar
+        if (typeof initRadarSystem === 'function') {
+            initRadarSystem(viewer);
+        }
 
     } catch (error) {
         console.error('Failed:', error);
@@ -301,7 +373,8 @@ function applyFilter(filter) {
             show = true;
         } else if (filter === 'rocketlab') {
             show = sat.isRocketLab;
-        } else if (filter === 'anomaly') {
+        } else if (filter === 'isolation' || filter === 'anomaly') {
+            // Tactical Isolation Mode: Only show the ML anomalies
             show = sat.isAnomaly === true;
         } else {
             show = sat.orbitType === filter;
@@ -315,10 +388,18 @@ function applyFilter(filter) {
         }
     });
 
-    // Show coverage beams for Rocket Lab filter, clear for everything else
+    // Darken the globe significantly in Isolation Mode for better contrast
+    if (filter === 'isolation') {
+        viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#020202');
+        viewer.scene.skyAtmosphere.brightnessShift = -0.5; // Dim the sky
+    } else {
+        viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050505');
+        viewer.scene.skyAtmosphere.brightnessShift = 0.2; // Restore normal
+    }
+
     updateStats(visibleCount, counts);
     clearBeams();
-    // Show beam toggle button for group filters (not "all")
+    
     const beamBtn = document.getElementById('beamToggle');
     if (filter !== 'all') {
       beamBtn.style.display = 'inline-block';
@@ -357,15 +438,24 @@ function setupClickHandler() {
     // Cast a ray from the click position
     const picked = viewer.scene.pick(click.position);
 
-    if (Cesium.defined(picked) && picked.id && picked.id.satrec) {
-        // we picked a satellite so we look it up
-        const sat = picked.id;
-            clearBeams();     // clear group beams
+    if (Cesium.defined(picked) && picked.id) {
+        // ROUTE 1: Airplane
+        if (picked.id.type === 'aircraft') {
+            clearBeams(); // Keep airspace clean
+            showAircraftPanel(picked.id.icao24);
+            flyToAircraft(picked.id.icao24);
+        } 
+        // ROUTE 2: Satellite
+        else if (picked.id.satrec) {
+            const sat = picked.id;
+            clearBeams();     
             showInfoPanel(sat);
             flyToSatellite(sat);
-            addBeam(sat); // comment if getting annoying on clicks
+            addBeam(sat); 
+        }
     } else {
-      document.getElementById('infoPanel').style.display = 'none';
+        // clicked empty space
+        document.getElementById('infoPanel').style.display = 'none';
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 }
@@ -417,6 +507,51 @@ function showInfoPanel(sat) {
 
     panel.style.display = 'block';
     
+}
+// ATMOSPHERIC UI 
+function showAircraftPanel(icao24) {
+    const panel = document.getElementById('infoPanel');
+    const content = document.getElementById('infoPanelContent');
+    
+    // Pull the live telemetry from the radar engine
+    const aircraft = window.activeAircraft[icao24];
+    if (!aircraft) return;
+
+    const data = aircraft.data;
+
+    // Tactical UI generation for aircraft
+    content.innerHTML = 
+        '<h3>' + data.callsign + '</h3>' +
+        '<span class="orbit-badge" style="background:#ff9900; color:#000;">ATMOSPHERIC RADAR</span>' +
+        '<div style="margin-top: 14px;">' +
+            infoRow('ICAO24 Hex', icao24.toUpperCase()) +
+            infoRow('Altitude', data.baro_alt.toFixed(0) + ' m') +
+            infoRow('Velocity', data.velocity.toFixed(1) + ' m/s') +
+            infoRow('Heading', data.heading.toFixed(1) + '°') +
+        '</div>';
+
+    panel.style.display = 'block';
+}
+
+function flyToAircraft(icao24) {
+    const aircraft = window.activeAircraft[icao24];
+    if (!aircraft) return;
+    
+    // Extract the precise 3D Cartesian coordinates
+    const cartesianPos = aircraft.billboard.position.getValue(viewer.clock.currentTime) || aircraft.billboard.position;
+    
+    // Convert to map coordinates so we can safely add altitude
+    const cartographic = Cesium.Cartographic.fromCartesian(cartesianPos);
+    
+    // Fly the camera to a tactical chase position (3km directly above the aircraft)
+    viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromRadians(
+            cartographic.longitude,
+            cartographic.latitude,
+            cartographic.height + 3000 
+        ),
+        duration: 1.5
+    });
 }
 
 // extra function to create one row in the info panel
@@ -541,9 +676,13 @@ async function fetchAnomalies() {
                 sat.anomalyData = anomalyMap[noradId];
 
                 // VISUAL OVERRIDE: Swap to a high-alert red tactical marker and scale it up
-                entry.billboard.image = createTacticalMarker('#ff0000'); 
+                entry.billboard.image = createTacticalMarker('#ff0000');
                 // Set base scale slightly larger so anomalies pop out from the crowd
                 entry.billboard.scale = 1.3;
+
+                // Force ML Anomalies to be visible from across the globe
+                entry.billboard.translucencyByDistance = new Cesium.NearFarScalar(1000000, 1.0, 50000000, 0.9);
+                entry.billboard.scaleByDistance = new Cesium.NearFarScalar(1000000, 1.5, 50000000, 0.8);
 
                 matched++;
             } else {
@@ -552,7 +691,10 @@ async function fetchAnomalies() {
             }
         });
 
-        console.log('Tactical override complete: ${matched} targets flagged on globe.');
+        console.log(`Tactical override complete: ${matched} targets flagged on globe.`);
+        if (window.logTacticalEvent) {
+            window.logTacticalEvent(`ML OVERRIDE: ${matched} orbital anomalies isolated.`, true);
+        }
 
     } catch (error) {
         console.warn('Backend not available: ' + error.message);
@@ -579,95 +721,207 @@ document.getElementById('beamToggle').addEventListener('click', function () {
   }
 });
 
-// Ground POV
-window.isGroundPOV = false;
-window.userLocation = { lon: -123.50, lat: 48.45 }; // Default fallback my city
-const orbitalViewHeight = 20000000;
+// ==========================================
+// --- TACTICAL MASTER CONTROLS & MATH ---
+// ==========================================
 
-// Fetch user location on site load
-if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            // Reassign the whole object to ensure it stays intact
-            window.userLocation = {
-                lon: position.coords.longitude,
-                lat: position.coords.latitude
-            };
-            console.log("Locked onto real-time coordinates:", window.userLocation);
-        },
-        (error) => console.warn("Location access denied. Using fallback.")
-    );
+// Spherical Math: Calculates distance between two points on the globe in meters
+function getGroundDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // Earth radius in meters
+    const dLat = Cesium.Math.toRadians(lat2 - lat1);
+    const dLon = Cesium.Math.toRadians(lon2 - lon1);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(Cesium.Math.toRadians(lat1)) * Math.cos(Cesium.Math.toRadians(lat2)) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; 
 }
 
-document.getElementById('groundPOVBtn').addEventListener('click', function () {
+// Generates a live scrolling terminal log in the God's Eye HUD
+window.logTacticalEvent = function(message, isAlert = false) {
+    const log = document.getElementById('tacticalEventLog');
+    if (!log) return;
+
+    // Generate Zulu time timestamp
+    const time = new Date().toISOString().substring(11, 19) + 'Z';
+    const entry = document.createElement('div');
+    
+    // Alerts are red, standard logs are cyan/green
+    entry.style.color = isAlert ? '#ff3333' : '#00ff96';
+    entry.style.textShadow = isAlert ? '0 0 6px #ff3333' : '0 0 4px #00ff96';
+    entry.innerHTML = `[${time}] ${message}`;
+
+    log.appendChild(entry);
+
+    // Keep the log clean by removing old entries (max 8 lines)
+    if (log.children.length > 8) {
+        log.removeChild(log.firstChild);
+    }
+};
+
+// 1. ISOLATION OVERRIDE (Independent Toggle)
+let isIsolationMode = false;
+document.getElementById('isolationToggleBtn').addEventListener('click', function() {
+    isIsolationMode = !isIsolationMode;
+    this.style.background = isIsolationMode ? 'rgba(255,50,50,0.3)' : 'rgba(30,40,60,0.6)';
+    this.textContent = isIsolationMode ? '[X] ISOLATION OVERRIDE' : '[ ] ISOLATION OVERRIDE';
+    
+    // Re-apply whatever the current orbit filter is, but with the override active
+    applyFilter(currentFilter);
+});
+
+// Update applyFilter to respect the Isolation Override
+function applyFilter(filter) {
+    let visibleCount = 0;
+    const counts = { LEO: 0, MEO: 0, GEO: 0, HEO: 0 };
+
+    satBillboards.forEach(function (entry) {
+        const sat = entry.sat;
+        let show = false;
+
+        // Base filter logic
+        if (filter === 'all') show = true;
+        else if (filter === 'rocketlab') show = sat.isRocketLab;
+        else show = sat.orbitType === filter;
+
+        // MASTER OVERRIDE: If Isolation is on, force-hide anything that isn't an anomaly
+        if (isIsolationMode && !sat.isAnomaly) {
+            show = false;
+        }
+
+        entry.billboard.show = show;
+        if (show) { visibleCount++; counts[sat.orbitType]++; }
+    });
+
+    // Darken globe for Isolation Mode
+    viewer.scene.globe.baseColor = isIsolationMode ? Cesium.Color.fromCssColorString('#020202') : Cesium.Color.fromCssColorString('#050505');
+    viewer.scene.skyAtmosphere.brightnessShift = isIsolationMode ? -0.5 : 0.2;
+
+    updateStats(visibleCount, counts);
+    clearBeams();
+}
+
+// 2. GOD'S EYE HUD (Decoupled Toggle)
+let isGodsEye = false;
+let hudInterval;
+document.getElementById('godsEyeToggleBtn').addEventListener('click', function() {
+    isGodsEye = !isGodsEye;
+    const hud = document.getElementById('godsEyeHud');
+    this.style.background = isGodsEye ? 'rgba(0,255,150,0.2)' : 'rgba(30,40,60,0.6)';
+    this.textContent = isGodsEye ? "[X] GOD'S EYE HUD" : "[ ] GOD'S EYE HUD";
+    
+    if (isGodsEye) {
+        hud.style.display = 'block';
+        hudInterval = setInterval(() => {
+            const camCartographic = Cesium.Cartographic.fromCartesian(viewer.camera.position);
+            document.getElementById('hudLat').textContent = Cesium.Math.toDegrees(camCartographic.latitude).toFixed(4) + '° N';
+            document.getElementById('hudLon').textContent = Math.abs(Cesium.Math.toDegrees(camCartographic.longitude)).toFixed(4) + '° W';
+            document.getElementById('hudAlt').textContent = (camCartographic.height).toFixed(0) + ' m';
+        }, 100);
+    } else {
+        hud.style.display = 'none';
+        clearInterval(hudInterval);
+    }
+});
+
+// 3. GROUND POV (Manual Coordinates Fallback)
+let isGroundPOV = false;
+
+document.getElementById('groundPOVBtn').addEventListener('click', function() {
     isGroundPOV = !isGroundPOV;
     const btn = this;
 
     if (isGroundPOV) {
-        // Fly down to 50 meters
         viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(
-                window.userLocation.lon,
-                window.userLocation.lat,
-                50 
-            ),
-            orientation: { 
-                heading: 0,   
-                pitch: Cesium.Math.toRadians(-15),
-                roll: 0.0
-            },
-            duration: 3.0,
-            complete: function() {
-                // Tilt camera up into the sky
-                viewer.camera.setView({
-                    orientation: {
-                        heading: 0,
-                        pitch: Cesium.Math.toRadians(85), // Looking up
-                        roll: 0.0
-                    }
-                });
-                
-                // Trigger beams
-                if (typeof showBeamsForGroup === 'function') {
-                    showBeamsForGroup();
-                }
-            }
+            destination: Cesium.Cartesian3.fromDegrees(window.userLocation.lon, window.userLocation.lat, 50),
+            orientation: { heading: 0, pitch: Cesium.Math.toRadians(85), roll: 0 },
+            duration: 3.0
         });
-        
         btn.textContent = 'Orbital View';
         btn.style.background = 'rgba(100,255,200,0.35)';
-        btn.style.borderColor = 'rgba(100,255,200,0.8)';
-        
     } else {
-        // Return to space
         viewer.camera.flyTo({ 
-            destination: Cesium.Cartesian3.fromDegrees(
-                window.userLocation.lon,
-                window.userLocation.lat,
-                orbitalViewHeight
-            ),
-            orientation: {
-                heading: 0,
-                pitch: Cesium.Math.toRadians(-90), // Look straight down
-                roll: 0
-            },
-            duration: 2.5,
-            complete: function() {
-                if (typeof clearBeams === 'function') {
-                    clearBeams();
-                }
-                const beamToggle = document.getElementById('beamToggle');
-                if (beamToggle) {
-                    beamToggle.classList.remove('active');
-                    beamToggle.textContent = 'Show Beams';
-                }
-            }
+            destination: Cesium.Cartesian3.fromDegrees(window.userLocation.lon, window.userLocation.lat, 20000000),
+            orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
+            duration: 2.5
         });
-        
         btn.textContent = 'Ground POV';
         btn.style.background = 'rgba(20,40,30,0.6)';
-        btn.style.borderColor = 'rgba(100,255,200,0.5)';
     }
+});
+
+// 4. REGIONAL TARGETING (Click Map to establish radar grid)
+let targetingHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+let targetCircle = null;
+
+document.getElementById('regionalTargetBtn').addEventListener('click', function() {
+    const btn = this;
+    if (btn.classList.contains('active')) {
+        // TURN OFF TARGETING
+        btn.classList.remove('active');
+        btn.style.background = 'rgba(30,40,60,0.6)';
+        btn.textContent = 'Target Region (Map Click)';
+        if (targetCircle) viewer.entities.remove(targetCircle);
+        if (typeof radarInterval !== 'undefined') clearInterval(radarInterval);
+        applyFilter(currentFilter); // Restore all sats
+        return;
+    }
+
+    // TURN ON TARGETING (Wait for user to click globe)
+    btn.classList.add('active');
+    btn.style.background = 'rgba(255,204,0,0.3)';
+    btn.textContent = 'Click globe to set grid...';
+
+    targetingHandler.setInputAction(function (click) {
+        if (!btn.classList.contains('active')) return;
+
+        // Get lat/lon of where user clicked
+        const earthPosition = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+        if (!earthPosition) return;
+        
+        const cartographic = Cesium.Cartographic.fromCartesian(earthPosition);
+        const lon = Cesium.Math.toDegrees(cartographic.longitude);
+        const lat = Cesium.Math.toDegrees(cartographic.latitude);
+
+        // Draw tactical radius (500km)
+        if (targetCircle) viewer.entities.remove(targetCircle);
+        targetCircle = viewer.entities.add({
+            position: Cesium.Cartesian3.fromDegrees(lon, lat),
+            ellipse: {
+                semiMinorAxis: 500000.0,
+                semiMajorAxis: 500000.0,
+                material: new Cesium.GridMaterialProperty({
+                    color: Cesium.Color.YELLOW.withAlpha(0.2),
+                    cellAlpha: 0.0,
+                    lineCount: new Cesium.Cartesian2(8, 8),
+                    lineThickness: new Cesium.Cartesian2(2.0, 2.0)
+                }),
+                outline: true, outlineColor: Cesium.Color.YELLOW
+            }
+        });
+
+        // Calculate Bounding Box (Roughly 5 degrees around click)
+        const lamin = lat - 5; const lamax = lat + 5;
+        const lomin = lon - 5; const lomax = lon + 5;
+
+        btn.textContent = `Grid Active: ${lat.toFixed(2)}N, ${lon.toFixed(2)}W`;
+
+        // 1. Start Airspace Radar for this specific region
+        if (typeof radarInterval !== 'undefined') clearInterval(radarInterval);
+        if (typeof sweepAirspace === 'function') {
+            sweepAirspace(lamin, lomin, lamax, lomax); // Initial ping
+            window.radarInterval = setInterval(() => sweepAirspace(lamin, lomin, lamax, lomax), 15000);
+        }
+
+        // 2. Filter Satellites (Hide everything outside the 500km radius)
+        satBillboards.forEach(entry => {
+            if (!entry.sat.position) return;
+            const dist = getGroundDistance(lat, lon, entry.sat.position.latitude, entry.sat.position.longitude);
+            // Hide if further than 500km
+            if (dist > 500000) entry.billboard.show = false;
+        });
+
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 });
 
 loadSatellites();
