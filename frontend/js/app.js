@@ -233,6 +233,10 @@ async function loadSatellites() {
         setupFilters();
 
         startAnimation();
+        // Fetch ML anomalies from backend
+        fetchAnomalies();
+        // Trigger the ML pipeline fetch after baseline render is complete
+        await fetchAnomalies();
 
     } catch (error) {
         console.error('Failed:', error);
@@ -297,6 +301,8 @@ function applyFilter(filter) {
             show = true;
         } else if (filter === 'rocketlab') {
             show = sat.isRocketLab;
+        } else if (filter === 'anomaly') {
+            show = sat.isAnomaly === true;
         } else {
             show = sat.orbitType === filter;
         }
@@ -385,6 +391,18 @@ function showInfoPanel(sat) {
         sat.orbitType + ' — ' + orbitInfo.label +
     '</span>' +
     rlBadge +
+    // Anomaly badge if ML flagged this satellite
+    (sat.isAnomaly ? ' <span class="orbit-badge" style="background:#ff2222; color:#fff;">ML ANOMALY</span>' : '') +
+    // Show anomaly reasons if available
+    (sat.anomalyData && sat.anomalyData.reasons.length > 0 ?
+        '<div style="margin-top:10px; padding:8px; background:rgba(255,50,50,0.1); border:1px solid rgba(255,50,50,0.3); border-radius:8px; font-size:11px;">' +
+        '<div style="color:#ff6666; font-weight:600; margin-bottom:4px;">Anomaly Reasons:</div>' +
+        sat.anomalyData.reasons.map(function(r) {
+            return '<div style="color:#ffaaaa;">• ' + r.feature + ': ' + r.value + ' (z=' + r.z_score + ', ' + r.direction + ')</div>';
+        }).join('') +
+        '<div style="color:#888; margin-top:4px;">Score: ' + sat.anomalyData.score + '</div></div>'
+    : '') +
+
     // Data rows
     '<div style="margin-top: 14px;">' +
         infoRow('Altitude',     pos.altitude.toFixed(1) + ' km') +
@@ -490,6 +508,58 @@ function setupSearch() {
         }
     });
 }
+// Fetch Anomaly data from Flask backend
+// Backend runs IsolationForest on Oribtal features and returns
+// NORAD IDs of flagged sattelites
+// We match and flag those satellites
+async function fetchAnomalies() {
+    try {
+        console.log('Fetching anomalies from backend');
+        const response = await fetch('http://localhost:5000/api/anomalies');
+        const data = await response.json();
+        console.log(`Backend reports ${data.total_anomalies} anomalies isolated.`);
+
+        // Need to build a lookup: NORAD ID -> anomaly data
+        const anomalyMap = {};
+        data.anomalies.forEach(function (a) {
+            anomalyMap[a.norad_id] = a;
+        });
+
+        // Match against our rendered satellites
+        // NORAD ID is in the TLE
+        // Extract it from the satellite's TLE data
+        let matched = 0;
+
+        // Iterate over satBillboards to update the visual markers
+        satBillboards.forEach(function (entry) {
+            const sat = entry.sat;
+            const noradId = parseInt(sat.satrec.satnum);
+
+            // satellite.js stores the catalog number in satrec.satnum
+            if (anomalyMap[noradId]) {
+                sat.isAnomaly = true;
+                sat.anomalyData = anomalyMap[noradId];
+
+                // VISUAL OVERRIDE: Swap to a high-alert red tactical marker and scale it up
+                entry.billboard.image = createTacticalMarker('#ff0000'); 
+                // Set base scale slightly larger so anomalies pop out from the crowd
+                entry.billboard.scale = 1.3;
+
+                matched++;
+            } else {
+                sat.isAnomaly = false;
+                sat.anomalyData = null;
+            }
+        });
+
+        console.log('Tactical override complete: ${matched} targets flagged on globe.');
+
+    } catch (error) {
+        console.warn('Backend not available: ' + error.message);
+        console.warn('Start ML backend with: cd backend && python app.py');
+    }
+}
+
 // Beam toggle button
 // Only visible when a group filter (like Rocket Lab) is active.
 // Clicking it toggles coverage beams on/off for all visible satellites.
