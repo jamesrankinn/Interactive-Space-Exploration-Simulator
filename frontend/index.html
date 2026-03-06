@@ -35,7 +35,7 @@
       z-index: 999;
     }
 
-    /* Bottom Left */
+    /* Stats Bar Bottom Left */
     #stats {
       position: absolute;
       bottom: 12px;
@@ -52,14 +52,17 @@
       color: #64b5f6;
       font-weight: bold;
     }
-     /* Search box top Left */
-    #searchBox {
+
+    /* Filter Bar for Rocket Lab Explicitly */
+    #controlPanel {
       position: absolute;
       top: 12px;
       left: 12px;
       z-index: 999;
       display: none;
+      max-width: 360px;
     }
+
     #searchInput {
       background: rgba(0, 0, 0, 0.8);
       border: 1px solid rgba(100, 180, 255, 0.3);
@@ -67,15 +70,14 @@
       padding: 8px 14px;
       border-radius: 8px;
       font-size: 13px;
-      width: 260px;
+      width: 100%;
       outline: none;
+      box-sizing: border-box;
     }
-    #searchInput::placeholder {
-      color: #667788;
-    }
-    #searchInput:focus {
-      border-color: #64b5f6;
-    }
+    #searchInput::placeholder { color: #667788; }
+    #searchInput:focus { border-color: #64b5f6; }
+
+
     #searchResults {
       background: rgba(0, 0, 0, 0.85);
       border: 1px solid rgba(100, 180, 255, 0.2);
@@ -102,6 +104,33 @@
       border-radius: 4px;
       margin-left: 8px;
     }
+
+    /* Filter buttons row */
+    #filterBar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .filter-btn {
+      border: 1px solid rgba(100, 180, 255, 0.3);
+      background: rgba(30, 40, 60, 0.6);
+      color: #a0b8d0;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover {
+      background: rgba(60, 80, 120, 0.6);
+    }
+    .filter-btn.active {
+      background: rgba(100, 180, 255, 0.2);
+      border-color: #64b5f6;
+      color: #ffffff;
+    }
+
 
     /* Info panel (right side, hidden by default) */
     #infoPanel {
@@ -153,29 +182,69 @@
     }
     #closePanel:hover { color: #aaa; }
 
+    /* ---- NEW: Legend (bottom-right) ---- */
+    #legend {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 11px;
+      color: #8899aa;
+      z-index: 999;
+      display: none;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 3px 0;
+    }
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
   </style>
 </head>
 <body>
 
   <!-- This empty div is where Cesium draws the 3D globe -->
   <div id="cesiumContainer"></div>
-
-  
   <div id="loading">Loading satellite data...</div>
 
-  <!-- Search / filter box -->
-  <div id="searchBox">
-    <input type="text" id="searchInput" placeholder="Search satellites... (try 'rocket lab')">
+  <!-- Control Panel: Search / filter box -->
+ <div id="controlPanel">
+    <input type="text" id="searchInput" placeholder="Search satellites... (try 'starlink' or 'ISS')">
     <div id="searchResults"></div>
+    <div id="filterBar">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="LEO" style="border-color: rgba(255,107,107,0.5);">LEO</button>
+      <button class="filter-btn" data-filter="MEO" style="border-color: rgba(255,217,61,0.5);">MEO</button>
+      <button class="filter-btn" data-filter="GEO" style="border-color: rgba(107,203,255,0.5);">GEO</button>
+      <button class="filter-btn" data-filter="HEO" style="border-color: rgba(192,132,252,0.5);">HEO</button>
+      <button class="filter-btn" data-filter="rocketlab" style="border-color: rgba(0,220,130,0.5);">Rocket Lab</button>
+    </div>
   </div>
 
-  <!-- satellite stats--> 
-  <div id="stats" style="display: none;"></div>
+  <div id="stats"></div>
 
-   <!-- Detail panel for clicked satellite -->
+  <div id="stats"></div>
+
+  <!-- Detail panel for clicked satellite -->
   <div id="infoPanel">
     <button id="closePanel">&times;</button>
     <div id="infoPanelContent"></div>
+  </div>
+
+  <!-- Legend -->
+  <div id="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#ff6b6b"></div> LEO (&lt; 2,000 km)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ffd93d"></div> MEO (2,000–35,000 km)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#6bcbff"></div> GEO (~35,786 km)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#c084fc"></div> HEO (&gt; 36,000 km)</div>
   </div>
 
   <!--
