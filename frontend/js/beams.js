@@ -32,8 +32,6 @@ const BEAM_COLORS = {
   HEO: Cesium.Color.fromCssColorString('#c084fc').withAlpha(0.09)
 };
 
-const BEAM_OUTLINE = Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.4);
-
 // Need coverage Radius r = sqrt(h(2R + h))
 function getCoverageRadius(altitudeKm) {
     const h = altitudeKm * 1000; // convert to meters
@@ -84,13 +82,9 @@ function addBeam(sat) {
     const cone = viewer.entities.add({
         // We can use Cesiums CallBackProperty here to update beam
         position: new Cesium.CallbackProperty(() => {
-            const currentPos = sat.position;
-            if(!currentPos) return Cesium.Cartesian3.ZERO;
-            return Cesium.Cartesian3.fromDegrees(
-                currentPos.longitude,
-                currentPos.latitude,
-                (currentPos.altitude * 1000) / 2
-            );
+            const p = sat.position;
+            if (!p) return Cesium.Cartesian3.ZERO;
+            return Cesium.Cartesian3.fromDegrees(p.longitude, p.latitude, (p.altitude * 1000) / 2);
         }, false),
         cylinder: {
             topRadius: 8000, // Small opening at the satellite
@@ -108,11 +102,10 @@ function addBeam(sat) {
 
     // Ground target lock footprint
     const footprint = viewer.entities.add({
-        // Dynamic position tracker for the ground footprint
         position: new Cesium.CallbackProperty(() => {
-            const currentPos = sat.position;
-            if (!currentPos) return Cesium.Cartesian3.ZERO;
-            return Cesium.Cartesian3.fromDegrees(currentPos.longitude, currentPos.latitude);
+            const p = sat.position;
+            if (!p) return Cesium.Cartesian3.ZERO;
+            return Cesium.Cartesian3.fromDegrees(p.longitude, p.latitude);
         }, false),
         ellipse: {
             semiMajorAxis: radius,
@@ -121,9 +114,9 @@ function addBeam(sat) {
             outline: true,
             outlineColor: Cesium.Color.WHITE.withAlpha(0.5),
             outlineWidth: 2,
-            height: 100, // Slightly off the ground to prevent clipping
-            allowPicking: false
-        }
+            height: 100,
+        },
+        allowPicking: false
     });
 
     activeBeams.push(cone, footprint);
@@ -159,14 +152,11 @@ function showBeamsForGroup() {
         console.log(`Tactical filtering complete. ${count} satellites currently overhead.`);
     }
 
+// Remove all beams
 function clearBeams() {
   activeBeams.forEach(entity => viewer.entities.remove(entity));
   activeBeams = [];
 }
 
-// Expose for app.js
-window.showBeamsForGroup = showBeamsForGroup;
-window.clearBeams = clearBeams;
-window.activeBeams = activeBeams; 
 
 

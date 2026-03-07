@@ -16,7 +16,7 @@
 #   python app.py
 #   runs on http://localhost:5000
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
 import numpy as np
@@ -36,6 +36,9 @@ CORS(app)
 # TLE source
 TLE_URL = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle'
 
+# OpenSky config
+OPENSKY_URL = 'https://opensky-network.org/api/states/all'
+
 # Cache on CelesTrak
 # TLEs are valid for days so caching 30 minutes works.
 # For other defence measures should decrease time.
@@ -45,34 +48,66 @@ tle_cache = {
     'max_age': 1800  # 30 minutes in seconds
 }
 
+aircraft_cache = {
+    'data': None,
+    'timestamp': 0,
+    'max_age': 10
+}
+
+OPENSKY_USERNAME = 'jjrankin17@gmail.com-api-client' 
+OPENSKY_PASSWORD = 'Em8jjooQYsnGXPB4IV9vQFBjyCtDA4Io'
+
+
+
 def fetch_tles():
     """
-    Fetch TLE data from CelesTrak with caching.
+    Fetch TLE data from CelesTrak with an ironclad browser disguise.
     Return raw text, or None if fetch fails.
     """
     now = time.time()
 
-    # return cached data if it's fresh enough
+    # Return cached data if it's fresh enough
     if tle_cache['data'] and (now - tle_cache['timestamp'] < tle_cache['max_age']):
-        print("Cache data is good")
+        print("Using cached TLE data.")
         return tle_cache['data']
     
-    # otherwise we try again but it shouldn't fail
     try:
-        print("Downloading TLEs from CelesTrak")
-        response = requests.get(TLE_URL, timeout=30)
+        print("Initiating stealth download from CelesTrak...")
+        url = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle'
+        
+        # IRONCLAD DISGUISE: Full Firefox 123 fingerprint
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive'
+        }
+        
+        # A Session object automatically handles cookies and redirects like a real browser
+        session = requests.Session()
+        response = session.get(url, headers=headers, timeout=30)
+        
+        # Force Python to throw an error if CelesTrak returns a 403 or 404
         response.raise_for_status()
 
         tle_cache['data'] = response.text
         tle_cache['timestamp'] = now
-        print(f"Fetch got {len(response.text)} bytes")
+        print(f"SUCCESS: Infiltrated CelesTrak. Downloaded {len(response.text)} bytes.")
         return response.text
 
-    except requests.RequestException as e:
-        print(f"ERROR Failed to fetch TLEs: {e}")
+    except Exception as e:
+        print(f"\n--- CRITICAL BACKEND ERROR ---")
+        print(f"Failed to fetch TLEs: {e}")
+        
+        # If CelesTrak sends a rejection letter, print it to the terminal!
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"Status Code: {e.response.status_code}")
+            print(f"Rejection Details: {e.response.text[:250]}")
+        print("------------------------------\n")
+        
         # Return stale cache if we have it 
         if tle_cache['data']:
-            print("Cache returning stale cached data")
+            print("Falling back to stale cached data.")
             return tle_cache['data']
         return None
 
@@ -287,7 +322,19 @@ def health():
         'status': 'ok',
         'cache_age': round(time.time() - tle_cache['timestamp']) if tle_cache['timestamp'] else None
     })
-
+# Need this new route so that we can bypass API request limit
+@app.route('/api/tles', methods=['GET'])
+def get_tles():
+    """
+    Acts as a proxy for the frontend to bypass CelesTrak CORS blocks.
+    Returns the raw, cached TLE text.
+    """
+    raw_tle = fetch_tles()
+    if not raw_tle:
+        return jsonify({'error': 'Failed to fetch TLE data'}), 503
+    
+    # Return as plain text because satellite.js needs the raw string format
+    return raw_tle, 200, {'Content-Type': 'text/plain'}
 
 @app.route('/api/anomalies', methods=['GET'])
 def get_anomalies():
@@ -334,6 +381,47 @@ def get_anomalies():
         'anomalies': anomalies
     })
 
+@app.route('/api/aircraft', methods=['GET'])
+def get_aircraft():
+    lamin = request.args.get('lamin', type=float)
+    lomin = request.args.get('lomin', type=float)
+    lamax = request.args.get('lamax', type=float)
+    lomax = request.args.get('lomax', type=float)
+
+    if not all([lamin, lomin, lamax, lomax]):
+        return jsonify({'error': 'Missing bounding box params'}), 400
+
+    now = time.time()
+
+    # Return cache if fresh
+    if aircraft_cache['data'] and (now - aircraft_cache['timestamp'] < aircraft_cache['max_age']):
+        return jsonify(aircraft_cache['data'])
+
+    url = f'https://opensky-network.org/api/states/all?lamin={lamin}&lomin={lomin}&lamax={lamax}&lomax={lomax}'
+
+    try:
+        auth = None
+        if OPENSKY_USERNAME and OPENSKY_PASSWORD:
+            auth = (OPENSKY_USERNAME, OPENSKY_PASSWORD)
+
+        resp = requests.get(url, timeout=10, auth=auth)
+        resp.raise_for_status()
+        data = resp.json()
+
+        aircraft_cache['data'] = data
+        aircraft_cache['timestamp'] = now
+
+        state_count = len(data.get('states', []) or [])
+        print(f"[RADAR] {state_count} aircraft in region")
+        return jsonify(data)
+
+    except Exception as e:
+        print(f"[RADAR] OpenSky failed: {e}")
+        # Return stale cache if available
+        if aircraft_cache['data']:
+            return jsonify(aircraft_cache['data'])
+        return jsonify({'states': None, 'error': str(e)}), 503
+    
 # Run
 if __name__ == '__main__':
     print("=" * 60)
