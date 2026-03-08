@@ -1,0 +1,7 @@
+pyproject.toml
+setup.py
+tactical_math.cpp
+tactical_math.egg-info/PKG-INFO
+tactical_math.egg-info/SOURCES.txt
+tactical_math.egg-info/dependency_links.txt
+tactical_math.egg-info/top_level.txt
