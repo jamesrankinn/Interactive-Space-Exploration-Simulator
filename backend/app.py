@@ -24,6 +24,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 import time
 import re
+import tactical_math
 
 app = Flask(__name__)
 
@@ -404,7 +405,26 @@ def get_aircraft():
         if aircraft_cache['data']:
             return jsonify(aircraft_cache['data'])
         return jsonify({'states': None, 'error': str(e)}), 503
-    
+
+@app.route('/api/grid_filter', methods=['POST'])
+def grid_filter():
+    """
+    Receives satellite coordinates from the frontend, 
+    passes them to the C++ engine for microsecond filtering, 
+    and returns the targeted IDs.
+    """
+    data = request.json
+    grid_lat = data.get('lat')
+    grid_lon = data.get('lon')
+    ids = data.get('ids')
+    lats = data.get('lats')
+    lons = data.get('lons')
+
+    # THE FLEX: Hand off the heavy arrays to compiled C++ 
+    filtered_ids = tactical_math.filter_satellites(grid_lat, grid_lon, ids, lats, lons)
+
+    return jsonify({'targets': filtered_ids})
+
 # Run
 if __name__ == '__main__':
     print("=" * 60)

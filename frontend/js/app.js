@@ -241,12 +241,36 @@ function startAnimation() {
             else show = (sat.orbitType === currentFilter);
 
             // 3. TACTICAL GRID OVERRIDE (Dynamic Entry/Exit)
-            // If the grid is active, hide the satellite if it flies further than 500km away!
+            // 3. TACTICAL GRID OVERRIDE (Dynamic Entry/Exit via C++ Engine)
             if (window.activeGrid && show) {
-                const dist = getGroundDistance(window.activeGrid.lat, window.activeGrid.lon, p.latitude, p.longitude);
-                if (dist > 500000) {
-                    show = false; 
-                }
+                // We no longer do the math here! We let the backend do it.
+                // Note: In a true production app, we would batch these requests, 
+                // but for this architecture, we will ping the C++ engine.
+                
+                const reqData = {
+                    lat: window.activeGrid.lat,
+                    lon: window.activeGrid.lon,
+                    ids: [parseInt(sat.satrec.satnum)],
+                    lats: [p.latitude],
+                    lons: [p.longitude]
+                };
+
+                // This runs asynchronously so it doesn't freeze the browser
+                fetch('http://localhost:5000/api/grid_filter', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reqData)
+                })
+                .then(res => res.json())
+                .then(data => {
+                    // If the C++ engine returns an empty array, it's outside the 500km grid!
+                    if (data.targets.length === 0) {
+                        entry.billboard.show = false;
+                    }
+                })
+                .catch(err => console.error("C++ Engine Offline:", err));
+            } else {
+                entry.billboard.show = show;
             }
 
             entry.billboard.show = show;
@@ -530,14 +554,6 @@ document.getElementById('beamToggle').addEventListener('click', function () {
 // TACTICAL MASTER CONTROLS
 // ==========================================
 
-// Haversine (also in beams.js, duplicated here for regional targeting)
-function getGroundDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371000;
-    const dLat = Cesium.Math.toRadians(lat2 - lat1);
-    const dLon = Cesium.Math.toRadians(lon2 - lon1);
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(Cesium.Math.toRadians(lat1)) * Math.cos(Cesium.Math.toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 // Tactical Event Logger (scrolling terminal in HUD)
 window.logTacticalEvent = function (msg, isAlert) {
