@@ -54,6 +54,7 @@ aircraft_cache = {
     'max_age': 10
 }
 
+# Credentials should be loaded from env
 OPENSKY_USERNAME = 'jjrankin17@gmail.com-api-client' 
 OPENSKY_PASSWORD = 'Em8jjooQYsnGXPB4IV9vQFBjyCtDA4Io'
 
@@ -61,51 +62,33 @@ OPENSKY_PASSWORD = 'Em8jjooQYsnGXPB4IV9vQFBjyCtDA4Io'
 
 def fetch_tles():
     """
-    Fetch TLE data from CelesTrak with an ironclad browser disguise.
+    Fetch TLE data from a reliable GitHub CDN mirror to bypass CelesTrak firewalls.
     Return raw text, or None if fetch fails.
     """
     now = time.time()
 
-    # Return cached data if it's fresh enough
     if tle_cache['data'] and (now - tle_cache['timestamp'] < tle_cache['max_age']):
         print("Using cached TLE data.")
         return tle_cache['data']
     
     try:
-        print("Initiating stealth download from CelesTrak...")
-        url = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle'
+        print("Fetching TLEs from GitHub CDN mirror...")
+        # TACTICAL BYPASS: Using a reliable hourly mirror of CelesTrak's active.txt
+        url = 'https://raw.githubusercontent.com/mrmykey/tlecdn/main/active.txt'
         
-        # IRONCLAD DISGUISE: Full Firefox 123 fingerprint
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Connection': 'keep-alive'
-        }
-        
-        # A Session object automatically handles cookies and redirects like a real browser
-        session = requests.Session()
-        response = session.get(url, headers=headers, timeout=30)
-        
-        # Force Python to throw an error if CelesTrak returns a 403 or 404
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
 
         tle_cache['data'] = response.text
         tle_cache['timestamp'] = now
-        print(f"SUCCESS: Infiltrated CelesTrak. Downloaded {len(response.text)} bytes.")
+        print(f"SUCCESS: Downloaded {len(response.text)} bytes.")
         return response.text
 
     except Exception as e:
         print(f"\n--- CRITICAL BACKEND ERROR ---")
         print(f"Failed to fetch TLEs: {e}")
-        
-        # If CelesTrak sends a rejection letter, print it to the terminal!
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"Status Code: {e.response.status_code}")
-            print(f"Rejection Details: {e.response.text[:250]}")
         print("------------------------------\n")
         
-        # Return stale cache if we have it 
         if tle_cache['data']:
             print("Falling back to stale cached data.")
             return tle_cache['data']

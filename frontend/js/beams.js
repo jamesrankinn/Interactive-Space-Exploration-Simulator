@@ -1,3 +1,140 @@
+// Coverage Beam Visualization — Laser Line Style
+// Draws thin green laser lines from satellite to ground impact points
+// Plus a subtle ground scan ring. Clean, futuristic, minimal.
+
+const EARTH_RADIUS = 6371000;
+let activeBeams = [];
+
+// Coverage radius: r = sqrt(h * (2R + h)), scaled for sensor FOV
+function getCoverageRadius(altitudeKm) {
+    const h = altitudeKm * 1000;
+    const R = EARTH_RADIUS;
+    return Math.min(Math.sqrt(h * (2 * R + h)) * 0.4, 3000000);
+}
+
+// Haversine: spherical distance between two points
+function getGroundDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const dLat = Cesium.Math.toRadians(lat2 - lat1);
+    const dLon = Cesium.Math.toRadians(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(Cesium.Math.toRadians(lat1)) * Math.cos(Cesium.Math.toRadians(lat2)) *
+        Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Draw laser beam for one satellite
+function addBeam(sat) {
+    const pos = sat.position;
+    if (!pos) return;
+
+    const radius = getCoverageRadius(pos.altitude);
+    const beamColor = Cesium.Color.fromCssColorString('#00ff96').withAlpha(0.7);
+    const faintColor = Cesium.Color.fromCssColorString('#00ff96').withAlpha(0.15);
+
+    // Central laser line: satellite → ground directly below
+    const centerLine = viewer.entities.add({
+        polyline: {
+            positions: new Cesium.CallbackProperty(() => {
+                const p = sat.position;
+                if (!p) return [];
+                return [
+                    Cesium.Cartesian3.fromDegrees(p.longitude, p.latitude, p.altitude * 1000),
+                    Cesium.Cartesian3.fromDegrees(p.longitude, p.latitude, 200)
+                ];
+            }, false),
+            width: 2,
+            material: new Cesium.PolylineGlowMaterialProperty({
+                glowPower: 0.3,
+                color: beamColor
+            })
+        },
+        allowPicking: false
+    });
+    activeBeams.push(centerLine);
+
+
+    // Spread lines: 4 diagonal lasers pushing to the edge and spinning
+    const spreadAngles = [0, 90, 180, 270];
+    const spreadDist = Math.min(radius, 800000) / 111320; // Convert meters to rough degrees
+
+    spreadAngles.forEach(angle => {
+        const rad = Cesium.Math.toRadians(angle);
+        const line = viewer.entities.add({
+            polyline: {
+                // CallbackProperty runs every single frame for buttery smooth animation
+                positions: new Cesium.CallbackProperty(() => {
+                    const p = sat.position;
+                    if (!p) return [];
+                    
+                    // TACTICAL SPIN MATH: Use system time to continuously rotate the angle
+                    const timeSec = Date.now() / 1000.0;
+                    const spinSpeed = 5; // Adjust this to make it spin faster/slower
+                    const currentRad = rad + (timeSec * spinSpeed);
+
+                    // Push lasers EXACTLY to the true edge of the footprint
+                    const offsetLat = p.latitude + Math.cos(currentRad) * spreadDist;
+                    const offsetLon = p.longitude + Math.sin(currentRad) * spreadDist;
+                    
+                    return [
+                        Cesium.Cartesian3.fromDegrees(p.longitude, p.latitude, p.altitude * 1000),
+                        Cesium.Cartesian3.fromDegrees(offsetLon, offsetLat, 150)
+                    ];
+                }, false),
+                width: 1.5,
+                material: new Cesium.PolylineGlowMaterialProperty({
+                    glowPower: 0.3,
+                    color: Cesium.Color.fromCssColorString('#00ff96').withAlpha(0.4)
+                })
+            },
+            allowPicking: false
+        });
+        activeBeams.push(line);
+    });
+
+    // Ground scan ring
+    const ring = viewer.entities.add({
+        position: new Cesium.CallbackProperty(() => {
+            const p = sat.position;
+            if (!p) return Cesium.Cartesian3.ZERO;
+            return Cesium.Cartesian3.fromDegrees(p.longitude, p.latitude);
+        }, false),
+        ellipse: {
+            semiMajorAxis: radius, 
+            semiMinorAxis: radius, 
+            material: Cesium.Color.fromCssColorString('#00ff96').withAlpha(0.04),
+            outline: true,
+            outlineColor: Cesium.Color.fromCssColorString('#00ff96').withAlpha(0.3),
+            outlineWidth: 1,
+            height: 150
+        },
+        allowPicking: false
+    });
+    activeBeams.push(ring);
+}
+
+// Show beams for satellites overhead the user
+function showBeamsForGroup() {
+    clearBeams();
+    let count = 0;
+
+    satBillboards.forEach(entry => {
+        // If the satellite survived the grid filter and is visible, draw its beam!
+        if (entry.billboard.show) {
+            addBeam(entry.sat);
+            count++;
+        }
+    });
+    console.log(`Tactical filtering complete. ${count} satellites beaming.`);
+}
+
+function clearBeams() {
+    activeBeams.forEach(e => viewer.entities.remove(e));
+    activeBeams = [];
+}
+
+/*
+
 // Coverage Beam Visualization
 
 // Translucent Cone down to earth showing the "coverage" area from it's live position.
@@ -17,7 +154,7 @@ USAGE (call from app.js)
     addBeam(sat) - draw one beam for a clicked satellite
     showBeamsForGroup() - draw beams for all visible satellites
     clearBeams() - remove all present beams.
-*/
+
 
 const EARTH_RADIUS = 6371000; //meters (if numbers are off reminder much is in kms)
 
@@ -157,6 +294,6 @@ function clearBeams() {
   activeBeams.forEach(entity => viewer.entities.remove(entity));
   activeBeams = [];
 }
-
+*/
 
 

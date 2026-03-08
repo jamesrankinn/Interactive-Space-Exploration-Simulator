@@ -2,290 +2,387 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Orbital Explorer</title>
-
-  
+  <title>ORBITAL EXPLORER // C2 TERMINAL</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.104/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.104/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-  
-
   <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    /* Make the globe fill the entire browser window */
+    :root {
+      --accent: #00ff96;
+      --accent-dim: rgba(0, 255, 150, 0.15);
+      --danger: #ff3333;
+      --warn: #ffcc00;
+      --cyan: #00e6e6;
+      --panel-bg: rgba(8, 12, 20, 0.85);
+      --panel-border: rgba(0, 255, 150, 0.12);
+      --font: 'JetBrains Mono', 'Consolas', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
     html, body, #cesiumContainer {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: var(--font);
+      background: #000;
     }
 
+    /* Kill Cesium's default credit bar */
+    .cesium-viewer-bottom { display: none !important; }
+    .cesium-credit-logoContainer { display: none !important; }
+
+    /* ========== LOADING ========== */
     #loading {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0, 0, 0, 0.8);
-      color: #64b5f6;
-      padding: 24px 36px;
-      border-radius: 10px;
-      font-size: 14px;
-      z-index: 999;
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: var(--panel-bg); border: 1px solid var(--panel-border);
+      color: var(--accent); padding: 24px 40px; border-radius: 4px;
+      font-size: 13px; z-index: 2000; letter-spacing: 1px;
+      text-transform: uppercase;
     }
 
-    /* Stats Bar Bottom Left */
-    #stats {
-      position: absolute;
-      bottom: 12px;
-      left: 12px;
-      background: rgba(0, 0, 0, 0.75);
-      color: #aabbcc;
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-size: 12px;
-      z-index: 999;
-      display: none;
-    }
-    #stats span {
-      color: #64b5f6;
-      font-weight: bold;
+    /* ========== VIGNETTE OVERLAY ========== */
+    #vignette {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 400;
+      background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.7) 100%);
     }
 
-    /* Filter Bar for Rocket Lab Explicitly */
+    /* ========== CRT SCANLINES ========== */
+    #scanlines {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 401; opacity: 0.04;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px, rgba(0,255,150,0.08) 2px, rgba(0,255,150,0.08) 4px
+      );
+    }
+
+    /* ========== TOP BAR ========== */
+    #topBar {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 500;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 16px 20px; pointer-events: none;
+    }
+    #topBar > * { pointer-events: auto; }
+
+    .top-label {
+      font-size: 10px; color: rgba(0,255,150,0.5); letter-spacing: 2px;
+      text-transform: uppercase; margin-bottom: 2px;
+    }
+    .top-value {
+      font-size: 12px; color: var(--accent); font-weight: 500;
+    }
+    .top-title {
+      font-size: 18px; font-weight: 700; color: var(--accent);
+      letter-spacing: 4px; text-shadow: 0 0 20px rgba(0,255,150,0.3);
+    }
+    .top-subtitle {
+      font-size: 10px; color: rgba(0,255,150,0.4); letter-spacing: 3px;
+      margin-top: 2px;
+    }
+
+    #topLeft { text-align: left; }
+    #topCenter { text-align: center; flex: 1; }
+    #topRight { text-align: right; }
+
+    /* ========== CONTROL PANEL (left side) ========== */
     #controlPanel {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      z-index: 999;
-      display: none;
-      max-width: 360px;
+      position: absolute; top: 70px; left: 16px; z-index: 600;
+      display: none; width: 320px;
     }
 
     #searchInput {
-      background: rgba(0, 0, 0, 0.8);
-      border: 1px solid rgba(100, 180, 255, 0.3);
-      color: #ffffff;
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-size: 13px;
-      width: 100%;
-      outline: none;
-      box-sizing: border-box;
+      background: var(--panel-bg); border: 1px solid var(--panel-border);
+      color: #fff; padding: 8px 12px; border-radius: 3px;
+      font-family: var(--font); font-size: 12px; width: 100%;
+      outline: none; letter-spacing: 0.5px;
     }
-    #searchInput::placeholder { color: #667788; }
-    #searchInput:focus { border-color: #64b5f6; }
-
+    #searchInput::placeholder { color: rgba(255,255,255,0.25); }
+    #searchInput:focus { border-color: var(--accent); }
 
     #searchResults {
-      background: rgba(0, 0, 0, 0.85);
-      border: 1px solid rgba(100, 180, 255, 0.2);
-      border-radius: 8px;
-      margin-top: 4px;
-      max-height: 200px;
-      overflow-y: auto;
-      display: none;
+      background: var(--panel-bg); border: 1px solid var(--panel-border);
+      border-radius: 3px; margin-top: 4px; max-height: 180px;
+      overflow-y: auto; display: none;
     }
     .search-result {
-      padding: 6px 14px;
-      color: #aabbcc;
-      font-size: 12px;
-      cursor: pointer;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 5px 12px; color: rgba(255,255,255,0.6); font-size: 11px;
+      cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.03);
+      font-family: var(--font);
     }
-    .search-result:hover {
-      background: rgba(100, 180, 255, 0.1);
-      color: #ffffff;
-    }
-    .search-result .orbit-tag {
-      font-size: 10px;
-      padding: 1px 6px;
-      border-radius: 4px;
-      margin-left: 8px;
+    .search-result:hover { background: rgba(0,255,150,0.08); color: #fff; }
+    .orbit-tag {
+      font-size: 9px; padding: 1px 5px; border-radius: 2px;
+      margin-left: 6px; font-weight: 600;
     }
 
-    /* Filter buttons row */
-    #filterBar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      margin-top: 8px;
-    }
+    /* ========== FILTER BUTTONS ========== */
+    #filterBar { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; }
+
     .filter-btn {
-      border: 1px solid rgba(100, 180, 255, 0.3);
-      background: rgba(30, 40, 60, 0.6);
-      color: #a0b8d0;
-      padding: 5px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 11px;
-      transition: all 0.2s;
+      background: rgba(0,255,150,0.04); border: 1px solid rgba(0,255,150,0.15);
+      color: rgba(0,255,150,0.6); padding: 4px 10px; border-radius: 2px;
+      cursor: pointer; font-size: 10px; font-family: var(--font);
+      letter-spacing: 0.5px; text-transform: uppercase; transition: all 0.15s;
     }
-    .filter-btn:hover {
-      background: rgba(60, 80, 120, 0.6);
-    }
+    .filter-btn:hover { background: rgba(0,255,150,0.1); color: var(--accent); }
     .filter-btn.active {
-      background: rgba(100, 180, 255, 0.2);
-      border-color: #64b5f6;
-      color: #ffffff;
+      background: rgba(0,255,150,0.15); border-color: var(--accent);
+      color: var(--accent); font-weight: 600;
     }
 
+    /* Tactical control section */
+    .tac-section {
+      margin-top: 8px; padding-top: 8px;
+      border-top: 1px solid rgba(0,255,150,0.08);
+      display: flex; gap: 3px; flex-wrap: wrap;
+    }
+    .tac-btn {
+      background: rgba(255,50,50,0.04); border: 1px solid rgba(255,50,50,0.2);
+      color: rgba(255,100,100,0.7); padding: 4px 10px; border-radius: 2px;
+      cursor: pointer; font-size: 10px; font-family: var(--font);
+      letter-spacing: 0.5px; text-transform: uppercase; transition: all 0.15s;
+    }
+    .tac-btn:hover { background: rgba(255,50,50,0.1); }
+    .tac-btn.mode-btn {
+      border-color: rgba(0,255,150,0.2); color: rgba(0,255,150,0.6);
+      background: rgba(0,255,150,0.04);
+    }
+    .tac-btn.mode-btn:hover { background: rgba(0,255,150,0.1); }
 
-    /* Info panel (right side, hidden by default) */
+    /* ========== INFO PANEL (right side) ========== */
     #infoPanel {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      width: 320px;
-      background: rgba(10, 12, 20, 0.92);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(100, 180, 255, 0.2);
-      border-radius: 12px;
-      color: #e0e8f0;
-      padding: 20px;
-      z-index: 999;
-      font-size: 13px;
-      line-height: 1.6;
-      display: none;
+      position: absolute; top: 70px; right: 16px; width: 300px;
+      background: var(--panel-bg); border: 1px solid var(--panel-border);
+      border-radius: 4px; color: #e0e8f0; padding: 16px;
+      z-index: 600; font-size: 12px; line-height: 1.5; display: none;
     }
     #infoPanel h3 {
-      color: #64b5f6;
-      margin: 0 0 6px 0;
-      font-size: 15px;
+      color: var(--accent); margin: 0 0 4px; font-size: 14px;
+      font-weight: 600; letter-spacing: 1px;
     }
     .info-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 4px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex; justify-content: space-between; padding: 3px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
     }
-    .info-label { color: #8899aa; }
-    .info-value { color: #ffffff; font-weight: 500; }
+    .info-label { color: rgba(255,255,255,0.35); font-size: 11px; }
+    .info-value { color: #fff; font-weight: 500; font-size: 11px; }
     .orbit-badge {
-      display: inline-block;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 600;
-      margin-top: 4px;
+      display: inline-block; padding: 2px 8px; border-radius: 2px;
+      font-size: 10px; font-weight: 600; margin-top: 4px;
+      letter-spacing: 0.5px;
     }
     #closePanel {
-      position: absolute;
-      top: 12px;
-      right: 14px;
-      background: none;
-      border: none;
-      color: #667;
-      font-size: 18px;
-      cursor: pointer;
+      position: absolute; top: 10px; right: 12px;
+      background: none; border: none; color: rgba(255,255,255,0.3);
+      font-size: 16px; cursor: pointer; font-family: var(--font);
     }
-    #closePanel:hover { color: #aaa; }
+    #closePanel:hover { color: #fff; }
 
-    /* ---- NEW: Legend (bottom-right) ---- */
+    /* ========== BOTTOM BAR ========== */
+    #bottomBar {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 500;
+      display: flex; justify-content: space-between; align-items: flex-end;
+      padding: 12px 20px; pointer-events: none;
+    }
+    #bottomBar > * { pointer-events: auto; }
+
+    /* Stats */
+    #stats {
+      background: var(--panel-bg); border: 1px solid var(--panel-border);
+      padding: 8px 14px; border-radius: 3px; font-size: 11px;
+      color: rgba(255,255,255,0.5); display: none;
+    }
+    #stats span { color: var(--accent); font-weight: 600; }
+
+    /* Legend */
     #legend {
-      position: absolute;
-      bottom: 12px;
-      right: 12px;
-      background: rgba(0, 0, 0, 0.75);
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 11px;
-      color: #8899aa;
-      z-index: 999;
-      display: none;
+      background: var(--panel-bg); border: 1px solid var(--panel-border);
+      padding: 8px 14px; border-radius: 3px; font-size: 10px;
+      color: rgba(255,255,255,0.4); display: none;
+      letter-spacing: 0.5px;
     }
-    #stats, #legend {
-      background: rgba(20, 25, 40, 0.65);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(100, 180, 255, 0.18);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    .legend-item { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+    .legend-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+    /* ========== GOD'S EYE HUD ========== */
+    #godsEyeHud {
+      display: none; /* FORCES it off when the page loads */
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%; 
+      pointer-events: none !important; /* Ghost the entire container */
+      z-index: 450;
     }
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin: 3px 0;
-    }
-    .legend-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
+    
+    /* Force every single item inside the HUD to also ghost the mouse */
+    #godsEyeHud * {
+      pointer-events: none !important; 
     }
 
+    /* Legend */
+    #legend {
+      background: var(--panel-bg); border: 1px solid var(--panel-border);
+      padding: 8px 14px; border-radius: 3px; font-size: 10px;
+      color: rgba(255,255,255,0.4); display: none;
+      letter-spacing: 0.5px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+    .legend-dot { width: 6px; height: 6px; border-radius: 50%; }
+    
+    /* Crosshairs */
+    .hud-crosshair-h {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 80px; height: 2px; background: rgba(0,255,150,1.0);
+      box-shadow: 0 0 10px rgba(0,255,150,0.8);
+      pointer-events: none !important;
+    }
+    .hud-crosshair-v {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 2px; height: 80px; background: rgba(0,255,150,1.0);
+      box-shadow: 0 0 10px rgba(0,255,150,0.8);
+      pointer-events: none !important;
+    }
+    .hud-ring {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 400px; height: 400px; border: 2px solid rgba(0,255,150,0.4);
+      border-radius: 50%; box-shadow: inset 0 0 20px rgba(0,255,150,0.2), 0 0 20px rgba(0,255,150,0.2);
+      pointer-events: none !important;
+    }
+
+    /* HUD telemetry readout */
+    .hud-telemetry {
+      position: absolute; top: 225px; left: 20px;
+      color: var(--accent); font-size: 12px; line-height: 2.2;
+      text-shadow: 0 0 8px rgba(0,255,150,0.4);
+      pointer-events: none !important;
+    }
+    .hud-telemetry .hud-tag {
+      background: var(--accent); color: #000; padding: 1px 6px;
+      font-weight: 700; font-size: 15px; letter-spacing: 1.5px;
+      pointer-events: none !important;
+    }
+
+    /* Event log */
+    .hud-event-log {
+      position: absolute; bottom: 50px; left: 20px; width: 380px;
+      height: 140px; overflow: hidden; display: flex;
+      flex-direction: column; justify-content: flex-end;
+      border-left: 2px solid rgba(0,255,150,0.3);
+      padding-left: 12px; font-size: 11px; line-height: 1.6;
+      color: var(--accent);
+      background: linear-gradient(90deg, rgba(0,255,150,0.03) 0%, transparent 100%);
+      pointer-events: none !important;
+    }
+    #tacticalEventLog { display: flex; flex-direction: column; gap: 2px; pointer-events: none !important; }
+
+    /* Inner glow for HUD */
+    .hud-glow {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      box-shadow: inset 0 0 120px rgba(0,255,150,0.08);
+      pointer-events: none !important;
+    }
   </style>
 </head>
 <body>
 
-  <!-- This empty div is where Cesium draws the 3D globe -->
   <div id="cesiumContainer"></div>
-  <div id="loading">Loading satellite data...</div>
+  <div id="loading">INITIALIZING ORBITAL TELEMETRY...</div>
 
-  <!-- Control Panel: Search / filter box -->
-<div id="controlPanel">
-    <input type="text" id="searchInput" placeholder="Search satellites... (try 'starlink' or 'ISS')">
+  <!-- Cinematic overlays -->
+  <div id="vignette"></div>
+  <div id="scanlines"></div>
+
+  <!-- Top bar -->
+  <div id="topBar">
+    <div id="topLeft">
+      <div class="top-label">CLASSIFICATION</div>
+      <div class="top-value" style="color: var(--accent);">UNCLASSIFIED // OSINT</div>
+      <div class="top-value" style="margin-top:4px; color: rgba(255,255,255,0.3); font-size:10px;" id="satCountLabel">TRACKING: --</div>
+    </div>
+    <div id="topCenter">
+      <div class="top-title">ORBITAL EXPLORER</div>
+      <div class="top-subtitle">SECURITY INTELLIGENCE TERMINAL</div>
+    </div>
+    <div id="topRight">
+      <div class="top-label">SYS TIME</div>
+      <div class="top-value" id="sysTime">--</div>
+      <div class="top-value" style="margin-top:4px; color: rgba(255,255,255,0.3); font-size:10px;" id="mlStatus">ML: STANDBY</div>
+    </div>
+  </div>
+
+  <!-- Control panel -->
+  <div id="controlPanel">
+    <input type="text" id="searchInput" placeholder="SEARCH TARGET...">
     <div id="searchResults"></div>
-    
+
     <div id="filterBar">
-      <button class="filter-btn active" data-filter="all">All</button>
-      <button class="filter-btn" data-filter="LEO" style="border-color: rgba(255,107,107,0.5);">LEO</button>
-      <button class="filter-btn" data-filter="MEO" style="border-color: rgba(255,217,61,0.5);">MEO</button>
-      <button class="filter-btn" data-filter="GEO" style="border-color: rgba(107,203,255,0.5);">GEO</button>
-      <button class="filter-btn" data-filter="HEO" style="border-color: rgba(192,132,252,0.5);">HEO</button>
-      <button class="filter-btn" data-filter="rocketlab" style="border-color: rgba(0,220,130,0.5);">Rocket Lab</button>
+      <button class="filter-btn active" data-filter="all">ALL</button>
+      <button class="filter-btn" data-filter="LEO" style="border-color:rgba(255,50,50,0.3);">LEO</button>
+      <button class="filter-btn" data-filter="MEO" style="border-color:rgba(255,200,0,0.3);">MEO</button>
+      <button class="filter-btn" data-filter="GEO" style="border-color:rgba(0,230,230,0.3);">GEO</button>
+      <button class="filter-btn" data-filter="HEO" style="border-color:rgba(179,102,255,0.3);">HEO</button>
+      <button class="filter-btn" data-filter="rocketlab" style="border-color:rgba(0,220,130,0.3);">ROCKET LAB</button>
+      <button class="filter-btn" data-filter="anomaly" style="border-color:rgba(255,50,50,0.3);">ANOMALIES</button>
     </div>
 
-    <div style="margin-top: 10px; border-top: 1px solid rgba(100,180,255,0.2); padding-top: 10px; display: flex; gap: 4px; flex-wrap: wrap;">
-        <button id="isolationToggleBtn" class="filter-btn" style="border-color: #ff3333; font-weight: bold;">[ ] ISOLATION OVERRIDE</button>
-        <button id="godsEyeToggleBtn" class="filter-btn" style="border-color: #00ff96; font-weight: bold;">[ ] GOD'S EYE HUD</button>
-        
-        <button id="regionalTargetBtn" class="filter-btn" style="border-color: #ffcc00;">Target Region (Map Click)</button>
-        <button id="groundPOVBtn" class="filter-btn" style="border-color: rgba(100,255,200,0.5);">Ground POV</button>
-        <button id="beamToggle" class="filter-btn" style="border-color: rgba(255,255,100,0.5); display:none;">Show Beams</button>
+    <div class="tac-section">
+      <button id="godsEyeToggleBtn" class="tac-btn mode-btn">[ ] GOD'S EYE</button>
+      <button id="regionalTargetBtn" class="tac-btn mode-btn">TARGET REGION</button>
+      <button id="groundPOVBtn" class="tac-btn mode-btn">GROUND POV</button>
+      <button id="beamToggle" class="tac-btn mode-btn" style="display:none;">SHOW BEAMS</button>
+    </div>
+  </div>
+  
+  <!-- God's Eye HUD -->
+  <div id="godsEyeHud">
+    <div class="hud-glow"></div>
+    <div class="hud-crosshair-h"></div>
+    <div class="hud-crosshair-v"></div>
+    <div class="hud-ring"></div>
+
+    <div class="hud-telemetry">
+      <span class="hud-tag">OP: ORBITAL EYE</span><br><br>
+      SYS.TRACKING // ACTIVE<br>
+      LAT: <span id="hudLat">--</span><br>
+      LON: <span id="hudLon">--</span><br>
+      ALT: <span id="hudAlt">--</span><br>
+      MODE: SURVEILLANCE
+    </div>
+
+    <div class="hud-event-log">
+      <div id="tacticalEventLog">
+        <div style="opacity:0.5;">[SYS] EVENT LOG INITIALIZED</div>
+      </div>
     </div>
   </div>
 
-  <div id="godsEyeHud" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 500; box-shadow: inset 0 0 150px rgba(0, 255, 150, 0.15);">
-    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; height: 400px; border: 1px solid rgba(0, 255, 150, 0.25); border-radius: 50%;"></div>
-    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 1px; background: rgba(0, 255, 150, 0.8);"></div>
-    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 1px; height: 50px; background: rgba(0, 255, 150, 0.8);"></div>
-    <div style="position: absolute; top: 30px; left: 30px; color: #00ff96; font-family: monospace; font-size: 13px; text-shadow: 0 0 6px #00ff96; line-height: 1.5;">
-        <span style="background: #00ff96; color: #000; padding: 2px 6px; font-weight: bold;">OP: EPIC FURY</span><br><br>
-        SYS.TRACKING // ACTIVE<br>
-        LAT: <span id="hudLat">--</span><br>
-        LON: <span id="hudLon">--</span><br>
-        ALT: <span id="hudAlt">--</span><br>
-        TGT: AIRSPACE LOCK
+  <!-- Bottom bar -->
+  <div id="bottomBar">
+    <div id="stats"></div>
+    <div id="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#ff3333"></div> LEO &lt; 2,000 KM</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffcc00"></div> MEO 2K–35K KM</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#00e6e6"></div> GEO ~35,786 KM</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#b366ff"></div> HEO &gt; 36K KM</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff0000; box-shadow:0 0 4px #ff0000"></div> ML ANOMALY</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff9900"></div> AIRCRAFT</div>
     </div>
-    <div style="position: absolute; bottom: 30px; left: 30px; width: 400px; height: 160px; overflow-y: hidden; display: flex; flex-direction: column; justify-content: flex-end; color: #00ff96; font-family: monospace; font-size: 12px; text-shadow: 0 0 4px #00ff96; line-height: 1.5; border-left: 2px solid rgba(0, 255, 150, 0.5); padding-left: 12px; background: linear-gradient(90deg, rgba(0, 255, 150, 0.05) 0%, transparent 100%);">
-        <div id="tacticalEventLog" style="display: flex; flex-direction: column; gap: 4px;">
-            <div style="opacity: 0.5;">[SYS] INITIALIZING EVENT LOG...</div>
-        </div>
-    </div>
-    <div style="position: absolute; top:0; left:0; width: 100%; height: 100%; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03)); background-size: 100% 3px, 3px 100%; pointer-events: none; mix-blend-mode: overlay;"></div>
   </div>
 
-  <div id="stats"></div>
-
-  <!-- Detail panel for clicked satellite -->
+  <!-- Info panel -->
   <div id="infoPanel">
     <button id="closePanel">&times;</button>
     <div id="infoPanelContent"></div>
   </div>
 
-  <!-- Legend -->
-  <div id="legend">
-    <div class="legend-item"><div class="legend-dot" style="background:#ff6b6b"></div> LEO (&lt; 2,000 km)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#ffd93d"></div> MEO (2,000–35,000 km)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#6bcbff"></div> GEO (~35,786 km)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#c084fc"></div> HEO (&gt; 36,000 km)</div>
-  </div>
+  <!-- Live clock script -->
+  <script>
+    setInterval(function() {
+      var el = document.getElementById('sysTime');
+      if (el) el.textContent = new Date().toISOString().replace('T',' ').substring(0,19) + ' UTC';
+    }, 1000);
+  </script>
 
-  <!--
-  Our Code Loaded in order moving java to satellites.js and app.js for organization
-  satellite.js must load first because it uses it's functions.
-  
-  -->
   <script src="js/satellites.js"></script>
   <script src="js/beams.js"></script>
   <script src="js/app.js"></script>
@@ -293,4 +390,3 @@
 
 </body>
 </html>
-
