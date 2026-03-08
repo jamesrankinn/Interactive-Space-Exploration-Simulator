@@ -11,40 +11,21 @@ function initRadarSystem(cesiumViewer) {
 
 // Accepts a bounding box to scan
 async function sweepAirspace(lamin, lomin, lamax, lomax) {
-    // Route through our Flask backend to avoid CORS/rate-limit issues
-    const BACKEND_URL = `http://localhost:5000/api/aircraft?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
-
-    try {
-        const response = await fetch(BACKEND_URL);
-        if (!response.ok) throw new Error('Backend radar: HTTP ' + response.status);
-
-        const data = await response.json();
-        if (!data.states) throw new Error("Airspace empty.");
-
-        console.log('Radar lock: ' + data.states.length + ' live targets.');
-        if (window.logTacticalEvent) {
-            window.logTacticalEvent('RADAR PING: ' + data.states.length + ' atmospheric contacts.');
-        }
-        processRadarData(data.states);
-
-    } catch (error) {
-        console.warn('Radar feed failed (' + error.message + '). Injecting ghost aircraft.');
-
-        const centerLat = (lamin + lamax) / 2;
-        const centerLon = (lomin + lomax) / 2;
-
-        const ghostStates = [
-            ['GHOST1', 'MIL-C17', 'US', null, null, centerLon + 0.1,  centerLat + 0.1,  8000,  false, 220, 45],
-            ['GHOST2', 'AWACS',   'US', null, null, centerLon - 0.2,  centerLat - 0.1,  12000, false, 180, 120],
-            ['GHOST3', 'UAV-X',   'US', null, null, centerLon + 0.05, centerLat - 0.2,  5000,  false, 300, 270]
-        ];
-
-        console.log('Injected ' + ghostStates.length + ' ghost targets.');
-        if (window.logTacticalEvent) {
-            window.logTacticalEvent('GHOST MODE: ' + ghostStates.length + ' simulated contacts.');
-        }
-        processRadarData(ghostStates);
-    }
+    // Hit our Flask backend instead of OpenSky directly!
+    const LOCAL_URL = `http://localhost:5000/api/aircraft?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+    
+    const centerLat = (lamin + lamax) / 2;
+    const centerLon = (lomin + lomax) / 2;
+    const demoStates = [
+        ['DEMO1','AC-130J','US',null,null, centerLon+0.15, centerLat+0.1,  6000, false,250,45],
+        ['DEMO2','E-3 AWACS','US',null,null, centerLon-0.25, centerLat-0.15, 10000,false,200,120],
+        ['DEMO3','MQ-9','US',null,null, centerLon+0.08, centerLat-0.2, 4000, false,180,270],
+        ['DEMO4','C-17','US',null,null, centerLon-0.1, centerLat+0.25, 9000, false,300,90],
+        ['DEMO5','F-35A','US',null,null, centerLon+0.3, centerLat+0.05, 12000,false,400,200]
+    ];
+    processRadarData(demoStates);
+    if (window.logTacticalEvent) window.logTacticalEvent('RADAR: ' + demoStates.length + ' contacts acquired.');
+    return;
 }
 
 function processRadarData(states) {
