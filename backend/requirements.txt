@@ -4,3 +4,4 @@ requests==2.32.3
 scikit-learn==1.6.1
 numpy==2.2.3
 pybind11==2.13.6
+sgp4==2.23
