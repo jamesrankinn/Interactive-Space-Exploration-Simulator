@@ -12,16 +12,6 @@ function getCoverageRadius(altitudeKm) {
     return Math.min(Math.sqrt(h * (2 * R + h)) * 0.4, 3000000);
 }
 
-// Haversine: spherical distance between two points
-function getGroundDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371000;
-    const dLat = Cesium.Math.toRadians(lat2 - lat1);
-    const dLon = Cesium.Math.toRadians(lon2 - lon1);
-    const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(Cesium.Math.toRadians(lat1)) * Math.cos(Cesium.Math.toRadians(lat2)) *
-        Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 // Draw laser beam for one satellite
 function addBeam(sat) {

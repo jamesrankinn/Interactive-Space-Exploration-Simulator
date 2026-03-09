@@ -1,0 +1,18 @@
+# Python Virtual Environments
+venv/
+env/
+
+# Python Cache & Build Folders
+__pycache__/
+*.egg-info/
+build/
+dist/
+
+# Compiled C++ Binaries 
+*.pyd
+*.so
+*.dll
+*.dylib
+
+# Mac System Files
+.DS_Store
