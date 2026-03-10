@@ -17,8 +17,10 @@ import requests
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans 
 import time
 import math
+
 
 from sgp4.api import Satrec, jday
 import tactical_math
@@ -333,45 +335,85 @@ def propagate_all_satellites(satellites, anomaly_map=None):
 
     return positions
 
-# ML Pipeline
 
 def detect_anomalies(satellites):
-    if len(satellites) < 10:
+    """
+    1. K-Means clusters the satellites into 3 orbital regimes (LEO, MEO, GEO) 
+       based on their physical characteristics.
+    2. We run an independent Isolation Forest INSIDE each cluster. 
+    3. Now, a spy satellite in LEO is flagged because its orbit is suspicious 
+       compared to OTHER LEO satellites, completely eliminating regime bias.
+    """
+    if len(satellites) < 50:
         return {}
 
-    feature_names = ['eccentricity', 'bstar', 'mean_motion', 'inclination'] # what we want to display
+    feature_names = ['eccentricity', 'bstar', 'mean_motion', 'inclination']
+    # Build the feature matrix
     X = np.array([[sat['features'][f] for f in feature_names] for sat in satellites]) 
 
+    # Global Normalization
     scaler    = StandardScaler()
     X_scaled  = scaler.fit_transform(X)
-    model     = IsolationForest(contamination=0.05, n_estimators=200, random_state=42)
-    preds     = model.fit_predict(X_scaled)
-    scores    = model.decision_function(X_scaled)
-    means, stds = np.mean(X, axis=0), np.std(X, axis=0)
 
-    # Return dict keyed by norad_id for O(1) 
+    # Regime Clustering
+    # We force the data into 3 clusters representing the primary orbital regimes
+    kmeans   = KMeans(n_clusters=3, random_state=42, n_init=10)
+    clusters = kmeans.fit_predict(X_scaled)
+
     anomalies = {}
-    for i, pred in enumerate(preds):
-        if pred == -1:
-            sat     = satellites[i]
-            reasons = []
-            for j, fname in enumerate(feature_names):
-                z = (X[i, j] - means[j]) / stds[j] if stds[j] > 0 else 0
-                if abs(z) > 2:
-                    reasons.append({
-                        'feature':   fname,
-                        'value':     round(float(X[i, j]), 6),
-                        'z_score':   round(float(z), 2),
-                        'direction': 'high' if z > 0 else 'low'
-                    })
-            anomalies[sat['norad_id']] = {
-                'norad_id': sat['norad_id'],
-                'name':     sat['name'],
-                'score':    round(float(scores[i]), 4),
-                'features': sat['features'],
-                'reasons':  reasons,
-            }
+
+    # Anomaly Detection
+    for cluster_id in range(3):
+        # Extract the specific subset of satellites in this cluster
+        idx = np.where(clusters == cluster_id)[0]
+        
+        # If a cluster is too small, ML stats don't work. Skip it.
+        if len(idx) < 20:
+            continue 
+
+        X_cluster_scaled = X_scaled[idx]
+        X_cluster_raw    = X[idx]
+
+        # Train Isolation Forest 
+        iso_model = IsolationForest(contamination=0.03, n_estimators=200, random_state=42)
+        preds     = iso_model.fit_predict(X_cluster_scaled)
+        scores    = iso_model.decision_function(X_cluster_scaled)
+
+        # Calculate means and stds to find z-scores
+        c_means = np.mean(X_cluster_raw, axis=0)
+        c_stds  = np.std(X_cluster_raw, axis=0)
+
+        for i, pred in enumerate(preds):
+            if pred == -1: # -1 means anomaly detected
+                global_i = idx[i]
+                sat      = satellites[global_i]
+                
+                reasons = []
+                for j, fname in enumerate(feature_names):
+                    # Z-score relative to its own orbital regime, not the whole catalog
+                    z = (X_cluster_raw[i, j] - c_means[j]) / c_stds[j] if c_stds[j] > 0 else 0
+                    
+                    if abs(z) > 2.0: # Flag features that are 2+ standard deviations out
+                        reasons.append({
+                            'feature':   fname,
+                            'value':     round(float(X_cluster_raw[i, j]), 6),
+                            'z_score':   round(float(z), 2),
+                            'direction': 'high' if z > 0 else 'low',
+                            'context':   f'Compared to Regime {cluster_id}'
+                        })
+                
+                # Only save it if we actually found a specific structural reason
+                if reasons:
+                    anomalies[sat['norad_id']] = {
+                        'norad_id': sat['norad_id'],
+                        'name':     sat['name'],
+                        'score':    round(float(scores[i]), 4),
+                        'features': sat['features'],
+                        'reasons':  reasons,
+                    }
+                    
     return anomalies
+
 
 
 def get_or_compute_anomalies(satellites):
