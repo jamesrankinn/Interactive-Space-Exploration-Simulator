@@ -11,7 +11,7 @@ function initRadarSystem(cesiumViewer) {
 
 // Accepts a bounding box to scan
 async function sweepAirspace(lamin, lomin, lamax, lomax) {
-    // Hit our Flask backend instead of OpenSky directly!
+    // Hit our Flask backend instead of OpenSky directly
     const LOCAL_URL = `http://localhost:5000/api/aircraft?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
     
     const centerLat = (lamin + lamax) / 2;
